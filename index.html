@@ -3,25 +3,24 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-<title>Barkat Home Creations — Crew Timecard & Payroll</title>
+<title>Work Pulse — Time, Payroll, Productivity</title>
 <link rel="manifest" href="manifest.json" />
-<meta name="theme-color" content="#3B2B1F" />
+<meta name="theme-color" content="#0B1E3D" />
 <link rel="icon" href="icons/favicon-32.png" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
-<link rel="icon" href="data:," />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Zilla+Slab:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
   body { margin: 0; }
-  .brand { font-family: 'Fraunces', serif; }
-  .disp { font-family: 'Zilla Slab', serif; }
+  .brand { font-family: 'Manrope', sans-serif; letter-spacing: -0.02em; }
   .mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
   input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.35); }
   ::-webkit-scrollbar { height: 6px; }
-  ::-webkit-scrollbar-thumb { background: #CFC3A9; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb { background: #C7CEDB; border-radius: 3px; }
   @media print {
     body * { visibility: hidden; }
     .print-area, .print-area * { visibility: visible; }
@@ -32,23 +31,24 @@
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
-const WOOD_DARK = "#3B2B1F";
-const WOOD_DARK2 = "#2C2015";
-const WOOD = "#8B5E3C";
-const CLAY = "#B5654A";
-const CLAY_D = "#9C5540";
-const SAGE = "#748265";
-const SAGE_D = "#5F6E52";
-const SAND = "#E9E1D2";
-const CARD = "#FBF8F1";
-const INK = "#332419";
-const STONE = "#8C8577";
-const BORDER = "#DDD2BC";
+const SUPABASE_URL = "https://qzuevyydokdwceklbwhl.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_jW87hsRT7oNqJ3owEY5rPg_842GyDti";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const NAVY = "#0B1E3D";
+const NAVY2 = "#132A50";
+const ROYAL = "#1E5FD9";
+const ROYAL_L = "#4C7FE8";
+const BG = "#F4F6FB";
+const CARD = "#FFFFFF";
+const SLATE = "#5B6472";
+const BORDER = "#E2E6EE";
+const GREEN = "#1E8E5A";
+const RED = "#D33F3F";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function addDays(dateStr, n) {
   const d = new Date(dateStr + "T00:00:00");
@@ -78,51 +78,58 @@ function fmtMoney(n) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 function fmtRelative(iso) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60000);
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 function dateRange(start, end) {
   const out = [];
-  let cur = start;
-  let guard = 0;
-  while (cur <= end && guard < 400) {
-    out.push(cur);
-    cur = addDays(cur, 1);
-    guard++;
-  }
+  let cur = start, guard = 0;
+  while (cur <= end && guard < 400) { out.push(cur); cur = addDays(cur, 1); guard++; }
   return out;
 }
 
-function loadLS(key, fallback) {
-  try {
-    const v = localStorage.getItem(key);
-    return v ? JSON.parse(v) : fallback;
-  } catch {
-    return fallback;
-  }
+async function kvGetAll(workspaceId) {
+  const { data, error } = await sb.from("kv").select("key,value").eq("workspace_id", workspaceId);
+  if (error) throw error;
+  const map = {};
+  for (const row of data) map[row.key] = row.value;
+  return map;
 }
-function saveLS(key, value) {
+async function kvSet(workspaceId, key, value) {
+  const { error } = await sb.from("kv").upsert({ workspace_id: workspaceId, key, value, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+/* ---- Biometric unlock (device-local convenience only, not a secure login) ---- */
+async function biometricAvailable() {
+  if (!window.PublicKeyCredential) return false;
+  try { return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { return false; }
+}
+async function biometricPrompt() {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    await navigator.credentials.create({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: "Work Pulse" },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "user", displayName: "Work Pulse User" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+        timeout: 60000,
+      },
+    });
     return true;
   } catch {
     return false;
   }
 }
 
-/* ---- Inline icons (no external icon library needed) ---- */
+/* ---- Icons ---- */
 function Icon({ children, size = 16, color = "currentColor" }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      {children}
-    </svg>
-  );
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
 }
 const ClockIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></Icon>;
 const UsersIcon = (p) => <Icon {...p}><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c2.7.4 4.5 2.5 4.5 5.8"/></Icon>;
@@ -131,134 +138,685 @@ const DollarIcon = (p) => <Icon {...p}><path d="M12 2v20M17 6.5c0-1.9-2.2-3-5-3s
 const PrinterIcon = (p) => <Icon {...p}><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M6 17v4h12v-4"/></Icon>;
 const NoteIcon = (p) => <Icon {...p}><path d="M4 4h13l3 3v13H4z"/><path d="M17 4v3h3"/><path d="M8 12h8M8 16h5"/></Icon>;
 const XIcon = (p) => <Icon {...p}><path d="M6 6l12 12M18 6L6 18"/></Icon>;
-const HammerIcon = (p) => <Icon {...p}><path d="M15 12l6 6-2 2-6-6"/><path d="M4 15l6.5-6.5a3 3 0 0 1 4 0l.5.5a3 3 0 0 1 0 4L8.5 20 4 15z"/></Icon>;
 const HistoryIcon = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></Icon>;
 const UndoIcon = (p) => <Icon {...p}><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 0 1 0 10h-1"/></Icon>;
 const RestoreIcon = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></Icon>;
+const SearchIcon = (p) => <Icon {...p}><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></Icon>;
+const EditIcon = (p) => <Icon {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></Icon>;
+const ShareIcon = (p) => <Icon {...p}><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.7l7.6-4.4M8.2 13.3l7.6 4.4"/></Icon>;
+const GearIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></Icon>;
+const LockIcon = (p) => <Icon {...p}><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></Icon>;
+const DownloadIcon = (p) => <Icon {...p}><path d="M12 3v13m0 0l-4-4m4 4l4-4"/><path d="M4 19h16"/></Icon>;
+const UploadIcon = (p) => <Icon {...p}><path d="M12 21V8m0 0l-4 4m4-4l4 4"/><path d="M4 19h16"/></Icon>;
+const CheckIcon = (p) => <Icon {...p}><path d="M20 6L9 17l-5-5"/></Icon>;
 
 function App() {
-  const [employees, setEmployees] = useState(() => loadLS("bhc_employees", []));
-  const [entries, setEntries] = useState(() => loadLS("bhc_entries", []));
-  const [paidRanges, setPaidRanges] = useState(() => loadLS("bhc_paidRanges", {}));
-  const [dayNotes, setDayNotes] = useState(() => loadLS("bhc_dayNotes", {}));
-  const [tab, setTab] = useState("log");
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [employees, setEmployees] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [dayNotes, setDayNotes] = useState({});
+  const [paidRanges, setPaidRanges] = useState({});
+  const [deletedLog, setDeletedLog] = useState([]);
+  const [employerPin, setEmployerPin] = useState(null);
+
+  const [role, setRole] = useState(() => localStorage.getItem("wp_role") || null);
+
+  // Employer auth
+  const [session, setSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [workspace, setWorkspace] = useState(null);
+  const [workspaceChecked, setWorkspaceChecked] = useState(false);
+  const [employerUnlocked, setEmployerUnlocked] = useState(() => localStorage.getItem("wp_employer_unlocked") === "1");
+
+  // Employee join + identity
+  const [empWorkspaceId, setEmpWorkspaceId] = useState(() => localStorage.getItem("wp_emp_ws_id") || null);
+  const [empWorkspaceName, setEmpWorkspaceName] = useState(() => localStorage.getItem("wp_emp_ws_name") || "");
+  const [myEmployeeId, setMyEmployeeId] = useState(() => localStorage.getItem("wp_myId") || null);
+  const [myUnlocked, setMyUnlocked] = useState(() => {
+    const id = localStorage.getItem("wp_myId");
+    return id ? localStorage.getItem("wp_unlocked_" + id) === "1" : false;
+  });
+
+  const modalOpenRef = useRef(false);
+  const activeWorkspaceId = role === "employer" ? (workspace ? workspace.id : null) : empWorkspaceId;
+
+  useEffect(() => {
+    sb.auth.getSession().then(({ data }) => { setSession(data.session || null); setAuthChecked(true); });
+    const { data: sub } = sb.auth.onAuthStateChange((_e, sess) => setSession(sess));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (role !== "employer" || !session) { setWorkspaceChecked(role !== "employer"); return; }
+    (async () => {
+      const { data } = await sb.from("workspaces").select("id,name,company_code").eq("owner_id", session.user.id).maybeSingle();
+      setWorkspace(data || null);
+      setWorkspaceChecked(true);
+    })();
+  }, [role, session]);
+
+  async function refreshAll() {
+    if (!activeWorkspaceId) return;
+    try {
+      const map = await kvGetAll(activeWorkspaceId);
+      setEmployees(map.employees || []);
+      setEntries(map.entries || []);
+      setDayNotes(map.dayNotes || {});
+      setPaidRanges(map.paidRanges || {});
+      setDeletedLog(map.deletedLog || []);
+      setEmployerPin(map.employerPin ?? null);
+    } catch (e) {
+      setError("Couldn't connect to the shared database. Check your connection.");
+    }
+  }
+
+  useEffect(() => {
+    if (!activeWorkspaceId) { setLoaded(role !== "employer" && role !== "employee"); return; }
+    setLoaded(false);
+    refreshAll().finally(() => setLoaded(true));
+    const iv = setInterval(() => { if (!modalOpenRef.current) refreshAll(); }, 15000);
+    return () => clearInterval(iv);
+  }, [activeWorkspaceId]);
+
+  async function persist(key, value, setter) {
+    setter(value);
+    setSaving(true);
+    try {
+      await kvSet(activeWorkspaceId, key, value);
+    } catch {
+      setError("Couldn't save — check your connection and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function setRolePersist(r) {
+    setRole(r);
+    if (r) localStorage.setItem("wp_role", r); else localStorage.removeItem("wp_role");
+  }
+  function setMyIdPersist(id) {
+    setMyEmployeeId(id);
+    if (id) {
+      localStorage.setItem("wp_myId", id);
+      setMyUnlocked(localStorage.getItem("wp_unlocked_" + id) === "1");
+    } else {
+      localStorage.removeItem("wp_myId");
+      setMyUnlocked(false);
+    }
+  }
+  function unlockEmployerRemember() {
+    localStorage.setItem("wp_employer_unlocked", "1");
+    setEmployerUnlocked(true);
+  }
+  function unlockEmployeeRemember(id) {
+    localStorage.setItem("wp_unlocked_" + id, "1");
+    setMyUnlocked(true);
+  }
+  function switchUser() {
+    if (role === "employer") {
+      sb.auth.signOut();
+      localStorage.removeItem("wp_employer_unlocked");
+    }
+    setRolePersist(null);
+    setMyIdPersist(null);
+    setEmployerUnlocked(false);
+    setMyUnlocked(false);
+    setWorkspace(null);
+    setWorkspaceChecked(false);
+  }
+  function joinWorkspace(ws) {
+    setEmpWorkspaceId(ws.id);
+    setEmpWorkspaceName(ws.name);
+    localStorage.setItem("wp_emp_ws_id", ws.id);
+    localStorage.setItem("wp_emp_ws_name", ws.name);
+  }
+
+  const showLoading = role === "employer" ? (!authChecked || (session && !workspaceChecked) || (workspace && !loaded)) : (role === "employee" && empWorkspaceId && !loaded);
+
+  if (showLoading) {
+    return (
+      <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center" }} className="brand" >
+        <div style={{ color: NAVY, fontWeight: 800, fontSize: 22 }}>Loading Work Pulse…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: BG, fontFamily: "'Inter', sans-serif", display: "flex", flexDirection: "column" }}>
+      {error && (
+        <div className="px-4 py-2 text-sm text-white text-center" style={{ background: RED }}>
+          {error}
+        </div>
+      )}
+
+      {!role ? (
+        <RoleGate setRole={setRolePersist} />
+      ) : role === "employer" ? (
+        !session ? (
+          <EmployerAuthScreen onBack={() => setRolePersist(null)} />
+        ) : !workspace ? (
+          <CreateWorkspaceScreen session={session} onCreated={setWorkspace} onBack={() => setRolePersist(null)} />
+        ) : !employerPinReady(employerPin, employerUnlocked) ? (
+          employerPin === null ? (
+            <CreatePin
+              title="Create Employer PIN"
+              subtitle="This protects full access to crew data and payroll on this device."
+              onDone={(pin) => { persist("employerPin", pin, setEmployerPin); unlockEmployerRemember(); }}
+              onBack={() => setRolePersist(null)}
+            />
+          ) : (
+            <EnterPin
+              title="Employer PIN"
+              expected={employerPin}
+              onSuccess={() => unlockEmployerRemember()}
+              onBack={() => setRolePersist(null)}
+            />
+          )
+        ) : (
+          <EmployerApp
+            employees={employees} entries={entries} dayNotes={dayNotes} paidRanges={paidRanges} deletedLog={deletedLog} employerPin={employerPin} workspace={workspace}
+            persist={persist} switchUser={switchUser} modalOpenRef={modalOpenRef} saving={saving}
+          />
+        )
+      ) : (
+        !empWorkspaceId ? (
+          <CompanyCodeScreen onJoined={joinWorkspace} onBack={() => setRolePersist(null)} />
+        ) : !myEmployeeId ? (
+          <EmployeePicker employees={employees} companyName={empWorkspaceName} onPick={setMyIdPersist} onBack={() => { setEmpWorkspaceId(null); localStorage.removeItem("wp_emp_ws_id"); setRolePersist(null); }} />
+        ) : (
+          (() => {
+            const me = employees.find((e) => e.id === myEmployeeId);
+            if (!me) return <EmployeePicker employees={employees} companyName={empWorkspaceName} onPick={setMyIdPersist} onBack={() => { setMyIdPersist(null); setRolePersist(null); }} />;
+            if (!me.pin) {
+              return (
+                <CreatePin
+                  title={`Create Your PIN, ${me.name}`}
+                  subtitle="Only you will use this to see your hours and payroll."
+                  onDone={(pin) => {
+                    const next = employees.map((e) => (e.id === me.id ? { ...e, pin } : e));
+                    persist("employees", next, setEmployees);
+                    unlockEmployeeRemember(me.id);
+                  }}
+                  onBack={() => setMyIdPersist(null)}
+                />
+              );
+            }
+            if (!myUnlocked) {
+              return <EnterPin title={`Welcome back, ${me.name}`} expected={me.pin} onSuccess={() => unlockEmployeeRemember(me.id)} onBack={() => setMyIdPersist(null)} />;
+            }
+            return (
+              <EmployeeApp
+                me={me} entries={entries} dayNotes={dayNotes}
+                persist={persist} allEntries={entries} switchUser={switchUser}
+              />
+            );
+          })()
+        )
+      )}
+
+      <Footer />
+    </div>
+  );
+}
+
+function employerPinReady(employerPin, unlocked) {
+  return employerPin !== null && unlocked;
+}
+
+function GlobalStyle() { return null; }
+
+function Footer() {
+  return (
+    <div className="no-print text-center py-4 mono text-xs" style={{ color: SLATE, opacity: 0.8 }}>
+      Powered by Barkat Home Creations
+    </div>
+  );
+}
+
+function BrandHeader({ right }) {
+  return (
+    <div className="flex items-center justify-between px-5 pt-6 pb-2 max-w-4xl mx-auto w-full">
+      <div className="flex items-center gap-2">
+        <div className="brand text-2xl" style={{ fontWeight: 800 }}>
+          <span style={{ color: NAVY }}>WORK</span><span style={{ color: ROYAL }}>PULSE</span>
+        </div>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function RoleGate({ setRole }) {
+  return (
+    <div className="flex-1 flex flex-col">
+      <BrandHeader />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <div className="mono text-xs mb-8" style={{ color: SLATE, letterSpacing: "0.1em" }}>TIME · PAYROLL · PRODUCTIVITY</div>
+        <div className="w-full max-w-xs space-y-3">
+          <button onClick={() => setRole("employer")} className="w-full py-4 rounded-2xl text-white brand text-lg" style={{ background: `linear-gradient(135deg, ${ROYAL_L}, ${ROYAL})`, fontWeight: 800 }}>
+            I'm the Employer
+          </button>
+          <button onClick={() => setRole("employee")} className="w-full py-4 rounded-2xl brand text-lg" style={{ background: CARD, color: NAVY, border: `2px solid ${BORDER}`, fontWeight: 800 }}>
+            I'm a Crew Member
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmployerAuthScreen({ onBack }) {
+  const [mode, setMode] = useState("signup"); // signup | login
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState("");
+
+  async function submit() {
+    setErr(""); setInfo("");
+    if (!email.trim() || password.length < 6) { setErr("Enter a valid email and a password of at least 6 characters."); return; }
+    setBusy(true);
+    try {
+      if (mode === "signup") {
+        const { error } = await sb.auth.signUp({ email: email.trim(), password });
+        if (error) throw error;
+        setInfo("Account created — you're signed in.");
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw error;
+      }
+    } catch (e) {
+      setErr(e.message || "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <BrandHeader right={<button onClick={onBack} className="text-sm" style={{ color: SLATE }}>Back</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-xs">
+          <div className="flex gap-2 mb-5">
+            <button onClick={() => setMode("signup")} className="flex-1 py-2 rounded-lg text-sm" style={{ fontWeight: 700, background: mode === "signup" ? ROYAL : BG, color: mode === "signup" ? "white" : NAVY }}>Sign Up</button>
+            <button onClick={() => setMode("login")} className="flex-1 py-2 rounded-lg text-sm" style={{ fontWeight: 700, background: mode === "login" ? ROYAL : BG, color: mode === "login" ? "white" : NAVY }}>Log In</button>
+          </div>
+          <div className="brand text-lg mb-4 text-center" style={{ color: NAVY, fontWeight: 800 }}>
+            {mode === "signup" ? "Create Your Employer Account" : "Welcome Back"}
+          </div>
+          {err && <div className="text-xs mb-3 text-center" style={{ color: RED }}>{err}</div>}
+          {info && <div className="text-xs mb-3 text-center" style={{ color: GREEN }}>{info}</div>}
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" className="w-full px-3 py-3 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER }} />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Password (min 6 characters)" className="w-full px-3 py-3 rounded-lg border text-sm mb-4" style={{ borderColor: BORDER }} />
+          <button onClick={submit} disabled={busy} className="w-full py-3 rounded-lg text-white text-sm" style={{ background: ROYAL, fontWeight: 700 }}>
+            {busy ? "Please wait…" : mode === "signup" ? "Create Account" : "Log In"}
+          </button>
+          <div className="text-xs text-center mt-4" style={{ color: SLATE }}>You'll stay signed in on this device.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CreateWorkspaceScreen({ session, onCreated, onBack }) {
+  const [name, setName] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function genCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let out = "";
+    for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    return out;
+  }
+
+  async function create() {
+    if (!name.trim()) { setErr("Enter your company name."); return; }
+    setBusy(true); setErr("");
+    let attempts = 0;
+    while (attempts < 5) {
+      const code = genCode();
+      const { data, error } = await sb.from("workspaces").insert({ owner_id: session.user.id, name: name.trim(), company_code: code }).select("id,name,company_code").single();
+      if (!error) { onCreated(data); return; }
+      if (!String(error.message).includes("duplicate")) { setErr(error.message); setBusy(false); return; }
+      attempts++;
+    }
+    setErr("Couldn't create a unique company code — try again.");
+    setBusy(false);
+  }
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <BrandHeader right={<button onClick={onBack} className="text-sm" style={{ color: SLATE }}>Back</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-xs">
+          <div className="brand text-lg mb-2 text-center" style={{ color: NAVY, fontWeight: 800 }}>Set Up Your Company</div>
+          <div className="text-sm text-center mb-4" style={{ color: SLATE }}>This creates your own private Work Pulse workspace.</div>
+          {err && <div className="text-xs mb-3 text-center" style={{ color: RED }}>{err}</div>}
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Company name" className="w-full px-3 py-3 rounded-lg border text-sm mb-4" style={{ borderColor: BORDER }} />
+          <button onClick={create} disabled={busy} className="w-full py-3 rounded-lg text-white text-sm" style={{ background: ROYAL, fontWeight: 700 }}>
+            {busy ? "Creating…" : "Create Workspace"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompanyCodeScreen({ onJoined, onBack }) {
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function join() {
+    if (code.trim().length < 4) { setErr("Enter the company code your employer gave you."); return; }
+    setBusy(true); setErr("");
+    try {
+      const { data, error } = await sb.rpc("lookup_workspace", { code: code.trim() });
+      if (error) throw error;
+      if (!data || data.length === 0) { setErr("No company found with that code — check with your employer."); setBusy(false); return; }
+      onJoined(data[0]);
+    } catch (e) {
+      setErr("Couldn't verify that code — check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <BrandHeader right={<button onClick={onBack} className="text-sm" style={{ color: SLATE }}>Back</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-xs">
+          <div className="brand text-lg mb-2 text-center" style={{ color: NAVY, fontWeight: 800 }}>Enter Company Code</div>
+          <div className="text-sm text-center mb-4" style={{ color: SLATE }}>Ask your employer for the 6-character code for your company.</div>
+          {err && <div className="text-xs mb-3 text-center" style={{ color: RED }}>{err}</div>}
+          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. AB12CD" className="w-full px-3 py-3 rounded-lg border text-sm mb-4 mono text-center" style={{ borderColor: BORDER, letterSpacing: "0.15em", fontSize: 18 }} maxLength={8} />
+          <button onClick={join} disabled={busy} className="w-full py-3 rounded-lg text-white text-sm" style={{ background: ROYAL, fontWeight: 700 }}>
+            {busy ? "Checking…" : "Continue"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinDots({ value }) {
+  return (
+    <div className="flex gap-3 justify-center mb-6">
+      {[0,1,2,3,4,5].map((i) => (
+        <div key={i} className="rounded-full" style={{ width: 16, height: 16, background: i < value.length ? ROYAL : "#DCE2EE" }} />
+      ))}
+    </div>
+  );
+}
+
+function CreatePin({ title, subtitle, onDone, onBack, inline }) {
+  const [step, setStep] = useState(1);
+  const [first, setFirst] = useState("");
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState("");
+
+  function handleChange(v) {
+    const digits = v.replace(/\D/g, "").slice(0, 6);
+    setVal(digits);
+    if (digits.length === 6) {
+      if (step === 1) {
+        setFirst(digits);
+        setVal("");
+        setStep(2);
+      } else {
+        if (digits === first) {
+          onDone(digits);
+        } else {
+          setErr("PINs didn't match — try again.");
+          setFirst("");
+          setVal("");
+          setStep(1);
+        }
+      }
+    }
+  }
+
+  const body = (
+    <div className="flex flex-col items-center">
+      {!inline && <LockIcon size={28} color={ROYAL} />}
+      <div className={inline ? "text-sm mb-1 text-center" : "brand text-xl mt-3 mb-1 text-center"} style={{ color: NAVY, fontWeight: 800 }}>{title}</div>
+      {subtitle && <div className="text-sm text-center mb-2 max-w-xs" style={{ color: SLATE }}>{subtitle}</div>}
+      <div className="text-xs mb-4" style={{ color: ROYAL, fontWeight: 600 }}>{step === 1 ? "Enter a 6-digit PIN" : "Confirm your PIN"}</div>
+      {err && <div className="text-xs mb-3" style={{ color: RED }}>{err}</div>}
+      <PinDots value={val} />
+      <input
+        autoFocus
+        type="tel"
+        inputMode="numeric"
+        value={val}
+        onChange={(e) => handleChange(e.target.value)}
+        className="opacity-0 absolute"
+        style={{ width: 1, height: 1 }}
+        id={inline ? "inline-pin-input" : undefined}
+      />
+      <button onClick={() => document.getElementById(inline ? "inline-pin-input" : undefined)?.focus() || document.querySelector('input[type=tel]')?.focus()} className="text-xs px-4 py-2 rounded-lg" style={{ background: CARD, border: `1px solid ${BORDER}`, color: SLATE }}>
+        Tap here to type
+      </button>
+      {inline && <button onClick={onBack} className="text-xs mt-3" style={{ color: SLATE }}>Cancel</button>}
+    </div>
+  );
+
+  if (inline) return <div className="py-2">{body}</div>;
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <BrandHeader right={<button onClick={onBack} className="text-sm" style={{ color: SLATE }}>Back</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        {body}
+      </div>
+    </div>
+  );
+}
+
+function EnterPin({ title, expected, onSuccess, onBack }) {
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState("");
+  const [bioAvailable, setBioAvailable] = useState(false);
+
+  useEffect(() => { biometricAvailable().then(setBioAvailable); }, []);
+
+  function handleChange(v) {
+    const digits = v.replace(/\D/g, "").slice(0, 6);
+    setVal(digits);
+    setErr("");
+    if (digits.length === 6) {
+      if (digits === expected) {
+        onSuccess();
+      } else {
+        setErr("Incorrect PIN — try again.");
+        setTimeout(() => setVal(""), 400);
+      }
+    }
+  }
+
+  async function tryBiometric() {
+    const ok = await biometricPrompt();
+    if (ok) onSuccess();
+    else setErr("Face ID / Touch ID wasn't confirmed — enter your PIN instead.");
+  }
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <BrandHeader right={<button onClick={onBack} className="text-sm" style={{ color: SLATE }}>Back</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <LockIcon size={28} color={ROYAL} />
+        <div className="brand text-xl mt-3 mb-4 text-center" style={{ color: NAVY, fontWeight: 800 }}>{title}</div>
+        {err && <div className="text-xs mb-3" style={{ color: RED }}>{err}</div>}
+        <PinDots value={val} />
+        <input
+          autoFocus
+          type="tel"
+          inputMode="numeric"
+          value={val}
+          onChange={(e) => handleChange(e.target.value)}
+          className="opacity-0 absolute"
+          style={{ width: 1, height: 1 }}
+        />
+        <button onClick={() => document.querySelector('input[type=tel]')?.focus()} className="text-xs px-4 py-2 rounded-lg mb-3" style={{ background: CARD, border: `1px solid ${BORDER}`, color: SLATE }}>
+          Tap here to type
+        </button>
+        {bioAvailable && (
+          <button onClick={tryBiometric} className="text-xs px-4 py-2 rounded-lg flex items-center gap-1.5" style={{ background: BG, color: ROYAL, fontWeight: 700 }}>
+            <LockIcon size={13} />Use Face ID / Touch ID instead
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmployeePicker({ employees, companyName, onPick, onBack }) {
+  return (
+    <div className="flex-1 flex flex-col">
+      <BrandHeader right={<button onClick={onBack} className="text-sm" style={{ color: SLATE }}>Back</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        {companyName && <div className="text-xs mb-2" style={{ color: ROYAL, fontWeight: 700 }}>{companyName}</div>}
+        <div className="brand text-xl mb-4" style={{ color: NAVY, fontWeight: 800 }}>Who are you?</div>
+        {employees.length === 0 ? (
+          <div className="text-sm text-center" style={{ color: SLATE }}>No crew added yet. Ask your employer to add you first.</div>
+        ) : (
+          <div className="w-full max-w-xs space-y-2">
+            {employees.map((e) => (
+              <button key={e.id} onClick={() => onPick(e.id)} className="w-full py-3 rounded-xl text-left px-4" style={{ background: CARD, border: `1px solid ${BORDER}`, color: NAVY, fontWeight: 600 }}>
+                {e.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ================= EMPLOYER APP ================= */
+
+function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, workspace, persist, switchUser, modalOpenRef, saving }) {
+  const [tab, setTab] = useState("log");
+  const [empSearch, setEmpSearch] = useState("");
+  const [logSearch, setLogSearch] = useState("");
 
   const [empName, setEmpName] = useState("");
   const [empRate, setEmpRate] = useState("");
+  const [editingEmpId, setEditingEmpId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editRate, setEditRate] = useState("");
 
   const [logEmpIds, setLogEmpIds] = useState([]);
   const [logDate, setLogDate] = useState(todayStr());
   const [logHours, setLogHours] = useState("");
+  const [editingEntryId, setEditingEntryId] = useState(null);
+  const [editHours, setEditHours] = useState("");
 
   const [rangeStart, setRangeStart] = useState(getMonday(todayStr()));
   const [rangeEnd, setRangeEnd] = useState(todayStr());
 
   const [noteCell, setNoteCell] = useState(null);
   const [payslipEmp, setPayslipEmp] = useState(null);
+  const [bulkPayslip, setBulkPayslip] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [deletedLog, setDeletedLog] = useState(() => loadLS("bhc_deletedLog", []));
-  const [toast, setToast] = useState(null);
-
-  function persistDeletedLog(next) {
-    setDeletedLog(next);
-    if (!saveLS("bhc_deletedLog", next)) setError("Couldn't save. Your browser storage may be full or blocked.");
-  }
-
-  function persistEmployees(next) {
-    setEmployees(next);
-    if (!saveLS("bhc_employees", next)) setError("Couldn't save. Your browser storage may be full or blocked.");
-  }
-  function persistEntries(next) {
-    setEntries(next);
-    if (!saveLS("bhc_entries", next)) setError("Couldn't save. Your browser storage may be full or blocked.");
-  }
-  function persistPaidRanges(next) {
-    setPaidRanges(next);
-    if (!saveLS("bhc_paidRanges", next)) setError("Couldn't save. Your browser storage may be full or blocked.");
-  }
-  function persistDayNotes(next) {
-    setDayNotes(next);
-    if (!saveLS("bhc_dayNotes", next)) setError("Couldn't save. Your browser storage may be full or blocked.");
-  }
+  useEffect(() => {
+    modalOpenRef.current = !!(noteCell || payslipEmp || bulkPayslip || settingsOpen);
+  }, [noteCell, payslipEmp, bulkPayslip, settingsOpen]);
 
   function addEmployee() {
     if (!empName.trim() || !empRate || Number(empRate) <= 0) return;
-    persistEmployees([...employees, { id: uid(), name: empName.trim(), rate: Number(empRate) }]);
+    persist("employees", [...employees, { id: uid(), name: empName.trim(), rate: Number(empRate), pin: null }], () => {});
     setEmpName(""); setEmpRate("");
+  }
+  function saveEmployeesLocal(next) { persist("employees", next, () => {}); }
+  function saveEntriesLocal(next) { persist("entries", next, () => {}); }
+  function saveNotesLocal(next) { persist("dayNotes", next, () => {}); }
+  function savePaidLocal(next) { persist("paidRanges", next, () => {}); }
+  function saveLogLocal(next) { persist("deletedLog", next, () => {}); }
+
+  function startEditEmp(e) { setEditingEmpId(e.id); setEditName(e.name); setEditRate(String(e.rate)); }
+  function saveEditEmp(id) {
+    if (!editName.trim() || !editRate || Number(editRate) <= 0) return;
+    saveEmployeesLocal(employees.map((e) => (e.id === id ? { ...e, name: editName.trim(), rate: Number(editRate) } : e)));
+    setEditingEmpId(null);
+  }
+  function resetEmpPin(id) {
+    saveEmployeesLocal(employees.map((e) => (e.id === id ? { ...e, pin: null } : e)));
   }
   function removeEmployee(id) {
     const emp = employees.find((e) => e.id === id);
     if (!emp) return;
-    const relatedEntries = entries.filter((t) => t.employeeId === id);
+    const related = entries.filter((t) => t.employeeId === id);
     const logId = uid();
-    persistDeletedLog([
-      { id: logId, type: "employee", label: emp.name, deletedAt: new Date().toISOString(), payload: { employee: emp, entries: relatedEntries } },
-      ...deletedLog,
-    ]);
-    persistEmployees(employees.filter((e) => e.id !== id));
-    persistEntries(entries.filter((t) => t.employeeId !== id));
-    showUndoToast(`Removed ${emp.name}`, logId);
+    saveLogLocal([{ id: logId, type: "employee", label: emp.name, deletedAt: new Date().toISOString(), payload: { employee: emp, entries: related } }, ...deletedLog]);
+    saveEmployeesLocal(employees.filter((e) => e.id !== id));
+    saveEntriesLocal(entries.filter((t) => t.employeeId !== id));
   }
 
-  function toggleLogEmp(id) {
-    setLogEmpIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-  function toggleLogEmpAll() {
-    setLogEmpIds((prev) => (prev.length === employees.length ? [] : employees.map((e) => e.id)));
-  }
+  function toggleLogEmp(id) { setLogEmpIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])); }
+  function toggleLogEmpAll() { setLogEmpIds((prev) => (prev.length === filteredEmployees.length ? [] : filteredEmployees.map((e) => e.id))); }
   function addEntry() {
     if (logEmpIds.length === 0 || !logDate || !logHours || Number(logHours) <= 0) return;
     const newEntries = logEmpIds.map((id) => ({ id: uid(), employeeId: id, date: logDate, hours: Number(logHours) }));
-    persistEntries([...entries, ...newEntries]);
+    saveEntriesLocal([...entries, ...newEntries]);
     setLogHours(""); setLogEmpIds([]);
+  }
+  function startEditEntry(t) { setEditingEntryId(t.id); setEditHours(String(t.hours)); }
+  function saveEditEntry(id) {
+    if (!editHours || Number(editHours) <= 0) return;
+    saveEntriesLocal(entries.map((t) => (t.id === id ? { ...t, hours: Number(editHours) } : t)));
+    setEditingEntryId(null);
   }
   function removeEntry(id) {
     const entry = entries.find((t) => t.id === id);
     if (!entry) return;
     const emp = employees.find((e) => e.id === entry.employeeId);
     const logId = uid();
-    persistDeletedLog([
-      { id: logId, type: "entry", label: `${emp ? emp.name : "Unknown"} · ${fmtDate(entry.date)} · ${entry.hours}h`, deletedAt: new Date().toISOString(), payload: entry },
-      ...deletedLog,
-    ]);
-    persistEntries(entries.filter((t) => t.id !== id));
-    showUndoToast("Removed time entry", logId);
+    saveLogLocal([{ id: logId, type: "entry", label: `${emp ? emp.name : "Unknown"} · ${fmtDate(entry.date)} · ${entry.hours}h`, deletedAt: new Date().toISOString(), payload: entry }, ...deletedLog]);
+    saveEntriesLocal(entries.filter((t) => t.id !== id));
   }
-
-  function showUndoToast(message, logId) {
-    setToast({ message, logId });
-    setTimeout(() => {
-      setToast((cur) => (cur && cur.logId === logId ? null : cur));
-    }, 6000);
-  }
-
   function restoreItem(logId) {
     const item = deletedLog.find((d) => d.id === logId);
     if (!item) return;
     if (item.type === "employee") {
-      persistEmployees([...employees, item.payload.employee]);
-      persistEntries([...entries, ...item.payload.entries]);
-    } else if (item.type === "entry") {
-      persistEntries([...entries, item.payload]);
+      saveEmployeesLocal([...employees, item.payload.employee]);
+      saveEntriesLocal([...entries, ...item.payload.entries]);
+    } else {
+      saveEntriesLocal([...entries, item.payload]);
     }
-    persistDeletedLog(deletedLog.filter((d) => d.id !== logId));
-    setToast(null);
+    saveLogLocal(deletedLog.filter((d) => d.id !== logId));
   }
-
-  function purgeHistoryItem(logId) {
-    persistDeletedLog(deletedLog.filter((d) => d.id !== logId));
-  }
+  function purgeHistoryItem(logId) { saveLogLocal(deletedLog.filter((d) => d.id !== logId)); }
 
   function setPreset(preset) {
     const t = todayStr();
     if (preset === "thisWeek") { setRangeStart(getMonday(t)); setRangeEnd(t); }
-    else if (preset === "lastWeek") { const lastMon = addDays(getMonday(t), -7); setRangeStart(lastMon); setRangeEnd(addDays(lastMon, 6)); }
+    else if (preset === "lastWeek") { const lm = addDays(getMonday(t), -7); setRangeStart(lm); setRangeEnd(addDays(lm, 6)); }
     else if (preset === "last30") { setRangeStart(addDays(t, -29)); setRangeEnd(t); }
   }
 
-  const days = useMemo(() => (rangeStart && rangeEnd && rangeStart <= rangeEnd ? dateRange(rangeStart, rangeEnd) : []), [rangeStart, rangeEnd]);
+  const filteredEmployees = useMemo(
+    () => employees.filter((e) => e.name.toLowerCase().includes(empSearch.toLowerCase())),
+    [employees, empSearch]
+  );
+  const filteredEntries = useMemo(() => {
+    const sorted = [...entries].sort((a, b) => (a.date < b.date ? 1 : -1));
+    if (!logSearch.trim()) return sorted;
+    const q = logSearch.toLowerCase();
+    return sorted.filter((t) => {
+      const emp = employees.find((e) => e.id === t.employeeId);
+      return (emp && emp.name.toLowerCase().includes(q)) || t.date.includes(q);
+    });
+  }, [entries, employees, logSearch]);
 
+  const days = useMemo(() => (rangeStart && rangeEnd && rangeStart <= rangeEnd ? dateRange(rangeStart, rangeEnd) : []), [rangeStart, rangeEnd]);
   const gridHours = useMemo(() => {
     const map = {};
     for (const t of entries) {
@@ -268,19 +826,16 @@ function App() {
     }
     return map;
   }, [entries, rangeStart, rangeEnd]);
-
   const empRangeTotals = useMemo(() => employees.map((e) => {
     let hours = 0;
     for (const d of days) hours += gridHours[e.id + "|" + d] || 0;
     return { ...e, hours, pay: hours * e.rate };
   }), [employees, days, gridHours]);
-
   const dayTotals = useMemo(() => days.map((d) => {
     let hours = 0;
     for (const e of employees) hours += gridHours[e.id + "|" + d] || 0;
     return hours;
   }), [days, employees, gridHours]);
-
   const grandTotalHours = empRangeTotals.reduce((s, e) => s + e.hours, 0);
   const grandTotalPay = empRangeTotals.reduce((s, e) => s + e.pay, 0);
 
@@ -288,16 +843,14 @@ function App() {
     const key = `${employeeId}|${rangeStart}|${rangeEnd}`;
     const next = { ...paidRanges };
     if (next[key]) delete next[key]; else next[key] = true;
-    persistPaidRanges(next);
+    savePaidLocal(next);
   }
   function saveNote(employeeId, date, text) {
     const key = employeeId + "|" + date;
     const next = { ...dayNotes };
     if (text.trim()) next[key] = text.trim(); else delete next[key];
-    persistDayNotes(next);
+    saveNotesLocal(next);
   }
-
-  const sortedEntries = [...entries].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   const tabs = [
     { id: "log", label: "Time Log", icon: ClockIcon },
@@ -308,33 +861,26 @@ function App() {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: SAND, fontFamily: "'Inter', sans-serif" }}>
-      <div
-        className="no-print px-5 pt-7 pb-4"
-        style={{
-          backgroundImage: `repeating-linear-gradient(95deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 7px), linear-gradient(160deg, ${WOOD_DARK}, ${WOOD_DARK2})`,
-          borderBottom: `3px solid ${CLAY}`,
-        }}
-      >
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center rounded-md flex-shrink-0" style={{ width: 42, height: 42, background: CLAY }}>
-              <HammerIcon size={19} color={CARD} />
+    <div className="flex-1 flex flex-col">
+      <div className="no-print" style={{ background: `linear-gradient(135deg, ${NAVY} 0%, ${NAVY2} 100%)` }}>
+        <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
+          <div className="flex items-center justify-between">
+            <div className="brand text-2xl" style={{ fontWeight: 800 }}>
+              <span style={{ color: "white" }}>WORK</span><span style={{ color: ROYAL_L }}>PULSE</span>
             </div>
-            <div>
-              <div className="brand text-white text-2xl sm:text-3xl leading-tight" style={{ fontWeight: 700 }}>Barkat Home Creations</div>
-              <div className="mono text-xs mt-0.5" style={{ color: "#C9B99C", letterSpacing: "0.08em" }}>CREW TIMECARD &amp; PAYROLL</div>
+            <div className="flex items-center gap-3">
+              {saving && <span className="text-xs" style={{ color: "#9FB3D9" }}>Saving…</span>}
+              <button onClick={() => setSettingsOpen(true)} style={{ color: "#C9D3E6" }}><GearIcon size={20} /></button>
+              <button onClick={switchUser} className="text-xs" style={{ color: "#9FB3D9" }}>Switch</button>
             </div>
           </div>
-          <div className="flex gap-5 mt-6 border-b" style={{ borderColor: "rgba(255,255,255,0.12)" }}>
+          <div className="mono text-xs mt-1" style={{ color: "#7C8FB5", letterSpacing: "0.08em" }}>EMPLOYER DASHBOARD</div>
+          <div className="flex gap-5 mt-5 border-b overflow-x-auto" style={{ borderColor: "rgba(255,255,255,0.12)", scrollbarWidth: "none" }}>
             {tabs.map((t) => {
-              const Ic = t.icon;
-              const active = tab === t.id;
+              const Ic = t.icon; const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => setTab(t.id)} className="disp text-sm pb-3 flex items-center gap-1.5"
-                  style={{ fontWeight: 600, color: active ? "#F3EAD8" : "#9C8F78", borderBottom: `2px solid ${active ? CLAY : "transparent"}`, background: "none", border: "none", borderBottomWidth: 2, borderBottomStyle: "solid", cursor: "pointer" }}>
-                  <Ic size={15} />
-                  {t.label}
+                <button key={t.id} onClick={() => setTab(t.id)} className="text-sm pb-3 flex items-center gap-1.5 flex-shrink-0" style={{ fontWeight: 600, color: active ? "white" : "#8C9BBD", borderBottom: `2px solid ${active ? ROYAL_L : "transparent"}`, whiteSpace: "nowrap" }}>
+                  <Ic size={14} />{t.label}
                 </button>
               );
             })}
@@ -342,27 +888,44 @@ function App() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-5 py-6 no-print">
-        {error && <div className="mb-4 px-3 py-2 rounded-md text-sm text-white" style={{ background: CLAY_D }}>{error}</div>}
-
+      <div className="max-w-4xl mx-auto px-5 py-6 no-print w-full flex-1">
         {tab === "crew" && (
           <div>
             <Card icon={UsersIcon} title="Add Crew Member">
               <div className="flex gap-2 flex-wrap">
-                <input value={empName} onChange={(e) => setEmpName(e.target.value)} placeholder="Name" className="flex-1 min-w-[140px] px-3 py-2 rounded-md border text-sm" style={{ borderColor: BORDER, background: "white" }} />
-                <input value={empRate} onChange={(e) => setEmpRate(e.target.value)} placeholder="Hourly rate" type="number" className="w-32 px-3 py-2 rounded-md border text-sm mono" style={{ borderColor: BORDER, background: "white" }} />
-                <button onClick={addEmployee} className="disp text-sm px-4 py-2 rounded-md text-white" style={{ background: WOOD, fontWeight: 600 }}>Add</button>
+                <input value={empName} onChange={(e) => setEmpName(e.target.value)} placeholder="Name" className="flex-1 min-w-[140px] px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+                <input value={empRate} onChange={(e) => setEmpRate(e.target.value)} placeholder="Hourly rate" type="number" className="w-32 px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                <button onClick={addEmployee} className="text-sm px-4 py-2 rounded-lg text-white" style={{ background: ROYAL, fontWeight: 600 }}>Add</button>
               </div>
             </Card>
-            {employees.length === 0 ? <Empty text="No crew added yet. Add your first employee above." /> : (
+            <SearchBar value={empSearch} onChange={setEmpSearch} placeholder="Search crew…" />
+            {filteredEmployees.length === 0 ? <Empty text="No crew found." /> : (
               <div className="space-y-2">
-                {employees.map((e) => (
+                {filteredEmployees.map((e) => (
                   <Row key={e.id}>
-                    <div>
-                      <div style={{ fontWeight: 600, color: INK }}>{e.name}</div>
-                      <div className="mono text-xs" style={{ color: STONE }}>{fmtMoney(e.rate)}/hr</div>
-                    </div>
-                    <button onClick={() => removeEmployee(e.id)} className="text-xs disp px-2 py-1" style={{ color: CLAY_D, fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>Remove</button>
+                    {editingEmpId === e.id ? (
+                      <div className="flex gap-2 flex-1 items-center flex-wrap">
+                        <input value={editName} onChange={(ev) => setEditName(ev.target.value)} className="flex-1 min-w-[100px] px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+                        <input value={editRate} onChange={(ev) => setEditRate(ev.target.value)} type="number" className="w-24 px-2 py-1.5 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                        <button onClick={() => saveEditEmp(e.id)} className="text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: GREEN, fontWeight: 600 }}>Save</button>
+                        <button onClick={() => setEditingEmpId(null)} className="text-xs px-2 py-1.5" style={{ color: SLATE }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <div style={{ fontWeight: 600, color: NAVY }}>{e.name}</div>
+                          <div className="mono text-xs flex items-center gap-2" style={{ color: SLATE }}>
+                            {fmtMoney(e.rate)}/hr
+                            {e.pin ? <span style={{ color: GREEN }}>· PIN set</span> : <span style={{ color: SLATE }}>· No PIN yet</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => startEditEmp(e)} style={{ color: ROYAL }}><EditIcon size={15} /></button>
+                          {e.pin && <button onClick={() => resetEmpPin(e.id)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Reset PIN</button>}
+                          <button onClick={() => removeEmployee(e.id)} className="text-xs" style={{ color: RED, fontWeight: 600 }}>Remove</button>
+                        </div>
+                      </>
+                    )}
                   </Row>
                 ))}
               </div>
@@ -373,49 +936,57 @@ function App() {
         {tab === "log" && (
           <div>
             <Card icon={ClockIcon} title="Log Hours">
-              {employees.length === 0 ? <div className="text-sm" style={{ color: STONE }}>Add crew members first, on the Crew tab.</div> : (
+              {employees.length === 0 ? <div className="text-sm" style={{ color: SLATE }}>Add crew members first.</div> : (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs disp" style={{ color: STONE, fontWeight: 600 }}>Select workers</div>
-                    <button onClick={toggleLogEmpAll} className="text-xs disp" style={{ color: WOOD, fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>
-                      {logEmpIds.length === employees.length ? "Clear all" : "Select all"}
-                    </button>
+                    <div className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Select workers</div>
+                    <button onClick={toggleLogEmpAll} className="text-xs" style={{ color: ROYAL, fontWeight: 600 }}>{logEmpIds.length === employees.length ? "Clear all" : "Select all"}</button>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-3">
                     {employees.map((e) => {
                       const active = logEmpIds.includes(e.id);
                       return (
-                        <button key={e.id} type="button" onClick={() => toggleLogEmp(e.id)} className="text-sm px-3 py-1.5 rounded-md"
-                          style={{ fontWeight: 600, background: active ? WOOD : "white", color: active ? "white" : INK, border: `1px solid ${active ? WOOD : BORDER}`, cursor: "pointer" }}>
+                        <button key={e.id} onClick={() => toggleLogEmp(e.id)} className="text-sm px-3 py-1.5 rounded-full" style={{ fontWeight: 600, background: active ? ROYAL : BG, color: active ? "white" : NAVY, border: `1px solid ${active ? ROYAL : BORDER}` }}>
                           {active ? "✓ " : ""}{e.name}
                         </button>
                       );
                     })}
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="px-3 py-2 rounded-md border text-sm mono" style={{ borderColor: BORDER, background: "white" }} />
-                    <input type="number" value={logHours} onChange={(e) => setLogHours(e.target.value)} placeholder="Hours" className="w-24 px-3 py-2 rounded-md border text-sm mono" style={{ borderColor: BORDER, background: "white" }} />
-                    <button onClick={addEntry} disabled={logEmpIds.length === 0} className="disp text-sm px-4 py-2 rounded-md"
-                      style={{ background: logEmpIds.length === 0 ? STONE : CLAY, color: "white", fontWeight: 600, border: "none", cursor: logEmpIds.length === 0 ? "default" : "pointer" }}>
-                      Punch In {logEmpIds.length > 0 ? `(${logEmpIds.length})` : ""}
+                    <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                    <input type="number" value={logHours} onChange={(e) => setLogHours(e.target.value)} placeholder="Hours" className="w-24 px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                    <button onClick={addEntry} disabled={logEmpIds.length === 0} className="text-sm px-4 py-2 rounded-lg text-white" style={{ background: logEmpIds.length === 0 ? SLATE : ROYAL, fontWeight: 600 }}>
+                      Log ({logEmpIds.length || 0})
                     </button>
                   </div>
                 </div>
               )}
             </Card>
-            {sortedEntries.length === 0 ? <Empty text="No hours logged yet." /> : (
+            <SearchBar value={logSearch} onChange={setLogSearch} placeholder="Search by name or date…" />
+            {filteredEntries.length === 0 ? <Empty text="No hours logged yet." /> : (
               <div className="space-y-2">
-                {sortedEntries.map((t) => {
+                {filteredEntries.map((t) => {
                   const emp = employees.find((e) => e.id === t.employeeId);
                   return (
                     <Row key={t.id}>
                       <div className="flex items-center gap-3">
-                        <div className="mono text-xs px-2 py-1 rounded" style={{ background: SAND, color: INK }}>{fmtDate(t.date)}</div>
-                        <div style={{ fontWeight: 600, color: INK }}>{emp ? emp.name : "Unknown"}</div>
+                        <div className="mono text-xs px-2 py-1 rounded" style={{ background: BG, color: NAVY }}>{fmtDate(t.date)}</div>
+                        <div style={{ fontWeight: 600, color: NAVY }}>{emp ? emp.name : "Unknown"}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className="mono text-sm" style={{ color: WOOD, fontWeight: 700 }}>{t.hours}h</div>
-                        <button onClick={() => removeEntry(t.id)} className="text-xs disp" style={{ color: CLAY_D, fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>Delete</button>
+                        {editingEntryId === t.id ? (
+                          <>
+                            <input value={editHours} onChange={(e) => setEditHours(e.target.value)} type="number" className="w-16 px-2 py-1 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                            <button onClick={() => saveEditEntry(t.id)} className="text-xs" style={{ color: GREEN, fontWeight: 700 }}>Save</button>
+                            <button onClick={() => setEditingEntryId(null)} className="text-xs" style={{ color: SLATE }}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{t.hours}h</div>
+                            <button onClick={() => startEditEntry(t)} style={{ color: ROYAL }}><EditIcon size={14} /></button>
+                            <button onClick={() => removeEntry(t.id)} className="text-xs" style={{ color: RED, fontWeight: 600 }}>Delete</button>
+                          </>
+                        )}
                       </div>
                     </Row>
                   );
@@ -428,43 +999,42 @@ function App() {
         {tab === "sheet" && (
           <div>
             <DateRangeBar rangeStart={rangeStart} rangeEnd={rangeEnd} setRangeStart={setRangeStart} setRangeEnd={setRangeEnd} setPreset={setPreset} />
-            <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: STONE }}><NoteIcon size={13} />Tap any cell to add a note for that day.</div>
-            {employees.length === 0 || days.length === 0 ? <Empty text="Add crew and pick a valid date range to see the timesheet." /> : (
-              <div className="overflow-x-auto rounded-md" style={{ border: `1px solid ${BORDER}`, background: CARD }}>
+            <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: SLATE }}><NoteIcon size={13} />Tap any cell to add a note for that day.</div>
+            {employees.length === 0 || days.length === 0 ? <Empty text="Add crew and pick a valid date range." /> : (
+              <div className="overflow-x-auto rounded-xl shadow-sm" style={{ border: `1px solid ${BORDER}`, background: CARD }}>
                 <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
                   <thead>
-                    <tr style={{ background: WOOD_DARK }}>
-                      <th className="disp text-left px-3 py-2.5 text-xs" style={{ color: "white", fontWeight: 600, position: "sticky", left: 0, background: WOOD_DARK }}>Date</th>
-                      {employees.map((e) => <th key={e.id} className="disp text-right px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: "white", fontWeight: 600 }}>{e.name}</th>)}
-                      <th className="disp text-right px-3 py-2.5 text-xs" style={{ color: "#E4C9A8", fontWeight: 700 }}>Day Total</th>
+                    <tr style={{ background: NAVY }}>
+                      <th className="text-left px-3 py-2.5 text-xs" style={{ color: "white", fontWeight: 600, position: "sticky", left: 0, background: NAVY }}>Date</th>
+                      {employees.map((e) => <th key={e.id} className="text-right px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: "white", fontWeight: 600 }}>{e.name}</th>)}
+                      <th className="text-right px-3 py-2.5 text-xs" style={{ color: ROYAL_L, fontWeight: 700 }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {days.map((d, i) => (
                       <tr key={d} style={{ borderTop: `1px solid ${BORDER}` }}>
-                        <td className="mono px-3 py-2 text-xs whitespace-nowrap" style={{ color: INK, position: "sticky", left: 0, background: CARD, fontWeight: 600 }}>{fmtDateWeekday(d)}</td>
+                        <td className="mono px-3 py-2 text-xs whitespace-nowrap" style={{ color: NAVY, position: "sticky", left: 0, background: CARD, fontWeight: 600 }}>{fmtDateWeekday(d)}</td>
                         {employees.map((e) => {
                           const h = gridHours[e.id + "|" + d] || 0;
                           const hasNote = !!dayNotes[e.id + "|" + d];
                           return (
                             <td key={e.id} className="text-right px-1 py-1">
-                              <button onClick={() => setNoteCell({ employeeId: e.id, date: d })} className="relative mono w-full text-right px-2 py-1.5 rounded"
-                                style={{ color: h ? WOOD : "#C9BFA9", background: hasNote ? "#EFE0C6" : "transparent", border: "none", cursor: "pointer" }}>
+                              <button onClick={() => setNoteCell({ employeeId: e.id, date: d })} className="relative mono w-full text-right px-2 py-1.5 rounded-lg" style={{ color: h ? ROYAL : "#C7CEDB", background: hasNote ? "#EAF0FE" : "transparent" }}>
                                 {h ? h : "–"}
-                                {hasNote && <span className="absolute rounded-full" style={{ top: 3, right: 3, width: 5, height: 5, background: CLAY }} />}
+                                {hasNote && <span className="absolute rounded-full" style={{ top: 3, right: 3, width: 5, height: 5, background: ROYAL }} />}
                               </button>
                             </td>
                           );
                         })}
-                        <td className="mono text-right px-3 py-2" style={{ color: CLAY_D, fontWeight: 700 }}>{dayTotals[i] || "–"}</td>
+                        <td className="mono text-right px-3 py-2" style={{ color: ROYAL, fontWeight: 700 }}>{dayTotals[i] || "–"}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr style={{ borderTop: `2px solid ${WOOD_DARK}`, background: SAND }}>
-                      <td className="disp px-3 py-2.5 text-xs" style={{ color: INK, fontWeight: 700, position: "sticky", left: 0, background: SAND }}>Total</td>
-                      {empRangeTotals.map((e) => <td key={e.id} className="mono text-right px-3 py-2.5" style={{ color: INK, fontWeight: 700 }}>{e.hours}</td>)}
-                      <td className="mono text-right px-3 py-2.5" style={{ color: CLAY_D, fontWeight: 700 }}>{grandTotalHours}</td>
+                    <tr style={{ borderTop: `2px solid ${NAVY}`, background: BG }}>
+                      <td className="px-3 py-2.5 text-xs" style={{ color: NAVY, fontWeight: 700, position: "sticky", left: 0, background: BG }}>Total</td>
+                      {empRangeTotals.map((e) => <td key={e.id} className="mono text-right px-3 py-2.5" style={{ color: NAVY, fontWeight: 700 }}>{e.hours}</td>)}
+                      <td className="mono text-right px-3 py-2.5" style={{ color: ROYAL, fontWeight: 700 }}>{grandTotalHours}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -478,37 +1048,37 @@ function App() {
             <DateRangeBar rangeStart={rangeStart} rangeEnd={rangeEnd} setRangeStart={setRangeStart} setRangeEnd={setRangeEnd} setPreset={setPreset} />
             {employees.length === 0 ? <Empty text="Add crew to see payroll." /> : (
               <div className="space-y-3">
-                <div className="flex justify-between items-center px-5 py-4 rounded-md mb-1" style={{ background: WOOD_DARK, color: "white" }}>
+                <div className="flex justify-between items-center px-5 py-4 rounded-xl mb-1 shadow-sm" style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})`, color: "white" }}>
                   <div>
-                    <div className="disp text-xs" style={{ color: "#B9AB90", fontWeight: 600 }}>Period Total</div>
-                    <div className="mono text-xs mt-0.5" style={{ color: "#C9B99C" }}>{rangeStart} to {rangeEnd}</div>
+                    <div className="text-xs" style={{ color: "#9FB3D9", fontWeight: 600 }}>Period Total</div>
+                    <div className="mono text-xs mt-0.5" style={{ color: ROYAL_L }}>{rangeStart} to {rangeEnd}</div>
                   </div>
-                  <div className="mono text-2xl" style={{ color: "#E4C9A8", fontWeight: 700 }}>{fmtMoney(grandTotalPay)}</div>
+                  <div className="mono text-2xl" style={{ color: ROYAL_L, fontWeight: 700 }}>{fmtMoney(grandTotalPay)}</div>
                 </div>
+                <button onClick={() => setBulkPayslip(true)} className="w-full text-sm px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5" style={{ background: CARD, border: `1px solid ${BORDER}`, color: NAVY, fontWeight: 600 }}>
+                  <PrinterIcon size={14} />Export All Payslips
+                </button>
                 {empRangeTotals.map((e) => {
                   const paid = !!paidRanges[`${e.id}|${rangeStart}|${rangeEnd}`];
                   return (
-                    <div key={e.id} className="relative overflow-hidden px-4 py-4 rounded-md" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
-                      {paid && (
-                        <div className="disp absolute" style={{ top: 8, right: -30, transform: "rotate(18deg)", color: SAGE_D, border: `3px solid ${SAGE_D}`, padding: "2px 34px", fontWeight: 700, fontSize: 13, letterSpacing: "0.12em", opacity: 0.85 }}>PAID</div>
-                      )}
+                    <div key={e.id} className="relative overflow-hidden px-4 py-4 rounded-xl shadow-sm" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+                      {paid && <div className="absolute" style={{ top: 8, right: -30, transform: "rotate(18deg)", color: GREEN, border: `3px solid ${GREEN}`, padding: "2px 34px", fontWeight: 700, fontSize: 13, letterSpacing: "0.12em", opacity: 0.85 }}>PAID</div>}
                       <div className="mb-2">
-                        <div style={{ fontWeight: 700, color: INK }}>{e.name}</div>
-                        <div className="mono text-xs" style={{ color: STONE }}>{fmtMoney(e.rate)}/hr</div>
+                        <div style={{ fontWeight: 700, color: NAVY }}>{e.name}</div>
+                        <div className="mono text-xs" style={{ color: SLATE }}>{fmtMoney(e.rate)}/hr</div>
                       </div>
-                      <div className="flex flex-wrap gap-4 mono text-sm mb-3" style={{ color: INK }}>
-                        <div><span style={{ color: STONE }}>Hours: </span>{e.hours}h</div>
-                        <div style={{ fontWeight: 700, color: WOOD }}>{fmtMoney(e.pay)}</div>
+                      <div className="flex flex-wrap gap-4 mono text-sm mb-3" style={{ color: NAVY }}>
+                        <div><span style={{ color: SLATE }}>Hours: </span>{e.hours}h</div>
+                        <div style={{ fontWeight: 700, color: ROYAL }}>{fmtMoney(e.pay)}</div>
                       </div>
                       <div className="flex gap-2 flex-wrap">
-                        <button onClick={() => togglePaid(e.id)} className="disp text-xs px-3 py-1.5 rounded-md"
-                          style={{ fontWeight: 700, background: paid ? SAND : SAGE, color: paid ? INK : "white", border: paid ? `1px solid ${BORDER}` : "none", cursor: "pointer" }}>
+                        <button onClick={() => togglePaid(e.id)} className="text-xs px-3 py-1.5 rounded-full" style={{ fontWeight: 700, background: paid ? BG : GREEN, color: paid ? NAVY : "white", border: paid ? `1px solid ${BORDER}` : "none" }}>
                           {paid ? "Mark Unpaid" : "Mark Paid"}
                         </button>
-                        <button onClick={() => setPayslipEmp(e.id)} disabled={e.hours === 0} className="disp text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
-                          style={{ fontWeight: 700, background: e.hours === 0 ? "#E1D8C4" : CLAY, color: "white", border: "none", cursor: e.hours === 0 ? "default" : "pointer" }}>
-                          <PrinterIcon size={12} />Payslip PDF
+                        <button onClick={() => setPayslipEmp(e.id)} disabled={e.hours === 0} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5" style={{ fontWeight: 700, background: e.hours === 0 ? "#E5E9F2" : ROYAL, color: "white" }}>
+                          <PrinterIcon size={12} />Payslip
                         </button>
+                        <ShareButton employee={e} rangeStart={rangeStart} rangeEnd={rangeEnd} gridHours={gridHours} />
                       </div>
                     </div>
                   );
@@ -520,20 +1090,20 @@ function App() {
 
         {tab === "history" && (
           <div>
-            <div className="text-xs mb-3" style={{ color: STONE }}>Deleted crew members and time entries stay here so you can bring them back.</div>
+            <div className="text-xs mb-3" style={{ color: SLATE }}>Deleted crew and time entries stay here so you can restore them.</div>
             {deletedLog.length === 0 ? <Empty text="Nothing deleted yet." /> : (
               <div className="space-y-2">
                 {deletedLog.map((d) => (
                   <Row key={d.id}>
                     <div>
-                      <div style={{ fontWeight: 600, color: INK }}>{d.label}</div>
-                      <div className="mono text-xs" style={{ color: STONE }}>{d.type === "employee" ? "Crew member" : "Time entry"} · deleted {fmtRelative(d.deletedAt)}</div>
+                      <div style={{ fontWeight: 600, color: NAVY }}>{d.label}</div>
+                      <div className="mono text-xs" style={{ color: SLATE }}>{d.type === "employee" ? "Crew member" : "Time entry"} · deleted {fmtRelative(d.deletedAt)}</div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => restoreItem(d.id)} className="disp text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5" style={{ background: SAGE, color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}>
+                      <button onClick={() => restoreItem(d.id)} className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: GREEN, color: "white", fontWeight: 700 }}>
                         <RestoreIcon size={12} />Restore
                       </button>
-                      <button onClick={() => purgeHistoryItem(d.id)} className="text-xs disp" style={{ color: STONE, fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>Dismiss</button>
+                      <button onClick={() => purgeHistoryItem(d.id)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Dismiss</button>
                     </div>
                   </Row>
                 ))}
@@ -542,15 +1112,6 @@ function App() {
           </div>
         )}
       </div>
-
-      {toast && (
-        <div className="no-print fixed left-1/2 flex items-center gap-3 px-4 py-3 rounded-md shadow-lg" style={{ bottom: 20, transform: "translateX(-50%)", background: WOOD_DARK, color: "white", zIndex: 60 }}>
-          <span className="text-sm">{toast.message}</span>
-          <button onClick={() => restoreItem(toast.logId)} className="disp text-xs px-3 py-1 rounded-md flex items-center gap-1" style={{ background: CLAY, color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}>
-            <UndoIcon size={12} />Undo
-          </button>
-        </div>
-      )}
 
       {noteCell && (
         <NoteModal
@@ -563,117 +1124,422 @@ function App() {
         />
       )}
       {payslipEmp && (
-        <PayslipModal
-          employee={employees.find((e) => e.id === payslipEmp)}
-          rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes}
-          onClose={() => setPayslipEmp(null)}
+        <PayslipModal employee={employees.find((e) => e.id === payslipEmp)} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} onClose={() => setPayslipEmp(null)} />
+      )}
+      {bulkPayslip && (
+        <BulkPayslipModal employees={empRangeTotals} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} onClose={() => setBulkPayslip(false)} />
+      )}
+      {settingsOpen && (
+        <SettingsModal
+          employerPin={employerPin}
+          workspace={workspace}
+          onChangePin={(pin) => persist("employerPin", pin, () => {})}
+          allData={{ employees, entries, dayNotes, paidRanges, deletedLog, employerPin }}
+          onImport={(data) => {
+            if (data.employees) persist("employees", data.employees, () => {});
+            if (data.entries) persist("entries", data.entries, () => {});
+            if (data.dayNotes) persist("dayNotes", data.dayNotes, () => {});
+            if (data.paidRanges) persist("paidRanges", data.paidRanges, () => {});
+            if (data.deletedLog) persist("deletedLog", data.deletedLog, () => {});
+            if (data.employerPin !== undefined) persist("employerPin", data.employerPin, () => {});
+          }}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
     </div>
   );
 }
 
+/* ================= EMPLOYEE APP ================= */
+
+function EmployeeApp({ me, entries, dayNotes, persist, allEntries, switchUser }) {
+  const [tab, setTab] = useState("log");
+  const [logDate, setLogDate] = useState(todayStr());
+  const [logHours, setLogHours] = useState("");
+  const [logNote, setLogNote] = useState("");
+  const [rangeStart, setRangeStart] = useState(getMonday(todayStr()));
+  const [rangeEnd, setRangeEnd] = useState(todayStr());
+  const [payslipOpen, setPayslipOpen] = useState(false);
+
+  const myEntries = useMemo(() => allEntries.filter((t) => t.employeeId === me.id).sort((a, b) => (a.date < b.date ? 1 : -1)), [allEntries, me.id]);
+
+  function addEntry() {
+    if (!logDate || !logHours || Number(logHours) <= 0) return;
+    const entry = { id: uid(), employeeId: me.id, date: logDate, hours: Number(logHours) };
+    persist("entries", [...allEntries, entry], () => {});
+    if (logNote.trim()) {
+      const key = me.id + "|" + logDate;
+      persist("dayNotes", { ...dayNotes, [key]: logNote.trim() }, () => {});
+    }
+    setLogHours(""); setLogNote("");
+  }
+  function setPreset(preset) {
+    const t = todayStr();
+    if (preset === "thisWeek") { setRangeStart(getMonday(t)); setRangeEnd(t); }
+    else if (preset === "lastWeek") { const lm = addDays(getMonday(t), -7); setRangeStart(lm); setRangeEnd(addDays(lm, 6)); }
+    else if (preset === "last30") { setRangeStart(addDays(t, -29)); setRangeEnd(t); }
+  }
+  const days = useMemo(() => (rangeStart <= rangeEnd ? dateRange(rangeStart, rangeEnd) : []), [rangeStart, rangeEnd]);
+  const gridHours = useMemo(() => {
+    const map = {};
+    for (const t of allEntries) {
+      if (t.employeeId !== me.id) continue;
+      if (t.date < rangeStart || t.date > rangeEnd) continue;
+      map[t.employeeId + "|" + t.date] = (map[t.employeeId + "|" + t.date] || 0) + t.hours;
+    }
+    return map;
+  }, [allEntries, me.id, rangeStart, rangeEnd]);
+  const totalHours = days.reduce((s, d) => s + (gridHours[me.id + "|" + d] || 0), 0);
+  const totalPay = totalHours * me.rate;
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <div className="no-print" style={{ background: `linear-gradient(135deg, ${NAVY} 0%, ${NAVY2} 100%)` }}>
+        <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
+          <div className="flex items-center justify-between">
+            <div className="brand text-2xl" style={{ fontWeight: 800 }}>
+              <span style={{ color: "white" }}>WORK</span><span style={{ color: ROYAL_L }}>PULSE</span>
+            </div>
+            <button onClick={switchUser} className="text-xs" style={{ color: "#9FB3D9" }}>Switch</button>
+          </div>
+          <div className="mono text-xs mt-1" style={{ color: "#7C8FB5" }}>{me.name.toUpperCase()}</div>
+          <div className="flex gap-5 mt-5 border-b" style={{ borderColor: "rgba(255,255,255,0.12)" }}>
+            {[{ id: "log", label: "Log Hours", icon: ClockIcon }, { id: "pay", label: "My Payroll", icon: DollarIcon }].map((t) => {
+              const Ic = t.icon; const active = tab === t.id;
+              return (
+                <button key={t.id} onClick={() => setTab(t.id)} className="text-sm pb-3 flex items-center gap-1.5" style={{ fontWeight: 600, color: active ? "white" : "#8C9BBD", borderBottom: `2px solid ${active ? ROYAL_L : "transparent"}` }}>
+                  <Ic size={14} />{t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-5 py-6 no-print w-full flex-1">
+        {tab === "log" && (
+          <div>
+            <Card icon={ClockIcon} title="Log Today's Hours">
+              <div className="flex gap-2 flex-wrap mb-3">
+                <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                <input type="number" value={logHours} onChange={(e) => setLogHours(e.target.value)} placeholder="Hours" className="w-24 px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+              </div>
+              <input value={logNote} onChange={(e) => setLogNote(e.target.value)} placeholder="Note (optional) — e.g. site, task…" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ borderColor: BORDER }} />
+              <button onClick={addEntry} disabled={!logHours} className="w-full text-sm px-4 py-2.5 rounded-lg text-white" style={{ background: !logHours ? SLATE : ROYAL, fontWeight: 700 }}>
+                Submit Hours
+              </button>
+            </Card>
+            <div className="text-xs mb-2" style={{ color: SLATE, fontWeight: 600 }}>Your recent entries</div>
+            {myEntries.length === 0 ? <Empty text="No hours logged yet." /> : (
+              <div className="space-y-2">
+                {myEntries.slice(0, 20).map((t) => (
+                  <Row key={t.id}>
+                    <div className="mono text-xs px-2 py-1 rounded" style={{ background: BG, color: NAVY }}>{fmtDate(t.date)}</div>
+                    <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{t.hours}h</div>
+                  </Row>
+                ))}
+              </div>
+            )}
+            <div className="text-xs mt-3" style={{ color: SLATE }}>Entries can't be edited once submitted — ask your employer if something needs correcting.</div>
+          </div>
+        )}
+
+        {tab === "pay" && (
+          <div>
+            <DateRangeBar rangeStart={rangeStart} rangeEnd={rangeEnd} setRangeStart={setRangeStart} setRangeEnd={setRangeEnd} setPreset={setPreset} />
+            <div className="rounded-xl p-5 shadow-sm mb-4" style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})`, color: "white" }}>
+              <div className="text-xs" style={{ color: "#9FB3D9", fontWeight: 600 }}>Your Total — {rangeStart} to {rangeEnd}</div>
+              <div className="mono text-3xl mt-1" style={{ color: ROYAL_L, fontWeight: 700 }}>{fmtMoney(totalPay)}</div>
+              <div className="mono text-sm mt-1" style={{ color: "#C9D3E6" }}>{totalHours} hours · {fmtMoney(me.rate)}/hr</div>
+            </div>
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => setPayslipOpen(true)} disabled={totalHours === 0} className="flex-1 text-sm px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5" style={{ background: totalHours === 0 ? "#E5E9F2" : ROYAL, color: "white", fontWeight: 700 }}>
+                <PrinterIcon size={14} />Payslip
+              </button>
+              <ShareButton employee={me} rangeStart={rangeStart} rangeEnd={rangeEnd} gridHours={gridHours} fullWidth />
+            </div>
+            {days.map((d) => {
+              const h = gridHours[me.id + "|" + d] || 0;
+              if (!h) return null;
+              return (
+                <Row key={d}>
+                  <div className="mono text-xs" style={{ color: NAVY }}>{fmtDateWeekday(d)}</div>
+                  <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{h}h</div>
+                </Row>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {payslipOpen && (
+        <PayslipModal employee={me} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} onClose={() => setPayslipOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+/* ================= SHARED UI ================= */
+
 function Card({ icon: Ic, title, children }) {
   return (
-    <div className="p-4 rounded-md mb-5" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
-      {title && <div className="disp text-sm mb-3 flex items-center gap-2" style={{ color: INK, fontWeight: 600 }}>{Ic && <Ic size={15} color={CLAY} />}{title}</div>}
+    <div className="p-4 rounded-xl mb-5 shadow-sm" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+      {title && <div className="text-sm mb-3 flex items-center gap-2" style={{ color: NAVY, fontWeight: 700 }}>{Ic && <Ic size={15} color={ROYAL} />}{title}</div>}
       {children}
     </div>
   );
 }
 function Row({ children }) {
-  return <div className="flex items-center justify-between px-4 py-3 rounded-md" style={{ background: CARD, border: `1px solid ${BORDER}` }}>{children}</div>;
+  return <div className="flex items-center justify-between px-4 py-3 rounded-xl shadow-sm mb-2" style={{ background: CARD, border: `1px solid ${BORDER}` }}>{children}</div>;
 }
-function Empty({ text }) {
-  return <div className="text-center py-10 text-sm" style={{ color: STONE }}>{text}</div>;
+function Empty({ text }) { return <div className="text-center py-10 text-sm" style={{ color: SLATE }}>{text}</div>; }
+
+function SearchBar({ value, onChange, placeholder }) {
+  return (
+    <div className="relative mb-3">
+      <div className="absolute" style={{ left: 12, top: 10, color: SLATE }}><SearchIcon size={15} /></div>
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+    </div>
+  );
 }
+
 function DateRangeBar({ rangeStart, rangeEnd, setRangeStart, setRangeEnd, setPreset }) {
   return (
-    <div className="p-4 rounded-md mb-4 flex flex-wrap items-center gap-3" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+    <div className="p-4 rounded-xl mb-4 flex flex-wrap items-center gap-3 shadow-sm" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
       <div className="flex items-center gap-2">
-        <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} className="px-3 py-2 rounded-md border text-sm mono" style={{ borderColor: BORDER, background: "white" }} />
-        <span className="text-sm" style={{ color: STONE }}>to</span>
-        <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} className="px-3 py-2 rounded-md border text-sm mono" style={{ borderColor: BORDER, background: "white" }} />
+        <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} className="px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+        <span className="text-sm" style={{ color: SLATE }}>to</span>
+        <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} className="px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
       </div>
       <div className="flex gap-1.5 flex-wrap">
         {[{ id: "thisWeek", label: "This Week" }, { id: "lastWeek", label: "Last Week" }, { id: "last30", label: "Last 30 Days" }].map((p) => (
-          <button key={p.id} onClick={() => setPreset(p.id)} className="disp text-xs px-3 py-1.5 rounded-md" style={{ fontWeight: 600, background: SAND, color: INK, border: `1px solid ${BORDER}`, cursor: "pointer" }}>{p.label}</button>
+          <button key={p.id} onClick={() => setPreset(p.id)} className="text-xs px-3 py-1.5 rounded-full" style={{ fontWeight: 600, background: BG, color: NAVY, border: `1px solid ${BORDER}` }}>{p.label}</button>
         ))}
       </div>
     </div>
   );
 }
+
 function NoteModal({ employee, date, hours, existing, onSave, onClose }) {
   const [text, setText] = useState(existing);
   return (
-    <div className="no-print fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-5" style={{ background: "rgba(43,32,21,0.55)", zIndex: 50 }} onClick={onClose}>
-      <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-md p-5" style={{ background: CARD }} onClick={(e) => e.stopPropagation()}>
+    <div className="no-print fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-5" style={{ background: "rgba(11,30,61,0.55)", zIndex: 50 }} onClick={onClose}>
+      <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5" style={{ background: CARD }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-3">
           <div>
-            <div className="disp text-sm flex items-center gap-1.5" style={{ color: INK, fontWeight: 700 }}><NoteIcon size={15} color={CLAY} />Day Note</div>
-            <div className="text-sm mt-1" style={{ color: STONE }}>{employee ? employee.name : "Unknown"} · {fmtDateFull(date)}</div>
+            <div className="text-sm flex items-center gap-1.5" style={{ color: NAVY, fontWeight: 700 }}><NoteIcon size={15} color={ROYAL} />Day Note</div>
+            <div className="text-sm mt-1" style={{ color: SLATE }}>{employee ? employee.name : "Unknown"} · {fmtDateFull(date)}</div>
           </div>
-          <button onClick={onClose} style={{ color: STONE, background: "none", border: "none", cursor: "pointer" }}><XIcon size={18} /></button>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
         </div>
-        <div className="mono text-xs mb-3" style={{ color: WOOD }}>Hours logged that day: {hours || 0}h</div>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Poured foundation at Site B, left early for supply run…" rows={4} className="w-full px-3 py-2 rounded-md border text-sm mb-4" style={{ borderColor: BORDER, background: "white" }} />
+        <div className="mono text-xs mb-3" style={{ color: ROYAL }}>Hours logged: {hours || 0}h</div>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder="Add a note…" className="w-full px-3 py-2 rounded-lg border text-sm mb-4" style={{ borderColor: BORDER }} />
         <div className="flex gap-2">
-          <button onClick={() => onSave(text)} className="disp text-sm px-4 py-2.5 rounded-md flex-1" style={{ background: CLAY, color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}>Save Note</button>
-          <button onClick={onClose} className="disp text-sm px-4 py-2.5 rounded-md" style={{ background: SAND, color: INK, border: `1px solid ${BORDER}`, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+          <button onClick={() => onSave(text)} className="text-sm px-4 py-2.5 rounded-lg flex-1 text-white" style={{ background: ROYAL, fontWeight: 700 }}>Save</button>
+          <button onClick={onClose} className="text-sm px-4 py-2.5 rounded-lg" style={{ background: BG, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Cancel</button>
         </div>
       </div>
     </div>
   );
 }
+
+function payslipRows(employee, days, gridHours, dayNotes) {
+  return days.map((d) => ({ date: d, hours: gridHours[employee.id + "|" + d] || 0, note: dayNotes[employee.id + "|" + d] || "" })).filter((r) => r.hours > 0 || r.note);
+}
+
+function PayslipDoc({ employee, rangeStart, rangeEnd, rows, totalHours, totalPay }) {
+  return (
+    <div className="px-6 py-6">
+      <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: `2px solid ${NAVY}` }}>
+        <div className="brand text-xl" style={{ fontWeight: 800 }}><span style={{ color: NAVY }}>WORK</span><span style={{ color: ROYAL }}>PULSE</span></div>
+        <div className="mono text-xs" style={{ color: ROYAL }}>PAYROLL STATEMENT</div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-6 text-sm">
+        <div><div className="mono text-xs" style={{ color: SLATE }}>EMPLOYEE</div><div style={{ color: NAVY, fontWeight: 700 }}>{employee.name}</div></div>
+        <div><div className="mono text-xs" style={{ color: SLATE }}>HOURLY RATE</div><div style={{ color: NAVY, fontWeight: 700 }}>{fmtMoney(employee.rate)}</div></div>
+        <div className="col-span-2"><div className="mono text-xs" style={{ color: SLATE }}>PAY PERIOD</div><div style={{ color: NAVY, fontWeight: 700 }}>{fmtDateFull(rangeStart)} — {fmtDateFull(rangeEnd)}</div></div>
+      </div>
+      <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
+        <thead><tr style={{ borderBottom: `1px solid ${NAVY}` }}><th className="text-left py-2 text-xs" style={{ color: NAVY }}>Date</th><th className="text-right py-2 text-xs" style={{ color: NAVY }}>Hours</th><th className="text-right py-2 text-xs" style={{ color: NAVY }}>Pay</th></tr></thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr><td colSpan={3} className="py-4 text-center text-sm" style={{ color: SLATE }}>No hours logged.</td></tr>
+          ) : rows.map((r) => (
+            <React.Fragment key={r.date}>
+              <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                <td className="mono py-2 text-xs" style={{ color: NAVY }}>{fmtDateWeekday(r.date)}</td>
+                <td className="mono text-right py-2" style={{ color: NAVY }}>{r.hours || "–"}</td>
+                <td className="mono text-right py-2" style={{ color: NAVY }}>{r.hours ? fmtMoney(r.hours * employee.rate) : "–"}</td>
+              </tr>
+              {r.note && <tr style={{ borderBottom: `1px solid ${BORDER}` }}><td colSpan={3} className="pb-2 text-xs italic" style={{ color: SLATE }}>{r.note}</td></tr>}
+            </React.Fragment>
+          ))}
+        </tbody>
+        <tfoot><tr style={{ borderTop: `2px solid ${NAVY}` }}><td className="py-2.5 text-xs" style={{ color: NAVY, fontWeight: 700 }}>Total</td><td className="mono text-right py-2.5" style={{ color: NAVY, fontWeight: 700 }}>{totalHours}h</td><td className="mono text-right py-2.5" style={{ color: ROYAL, fontWeight: 700 }}>{fmtMoney(totalPay)}</td></tr></tfoot>
+      </table>
+      <div className="mono text-xs text-center pt-4" style={{ color: SLATE, borderTop: `1px solid ${BORDER}` }}>Powered by Barkat Home Creations</div>
+    </div>
+  );
+}
+
 function PayslipModal({ employee, rangeStart, rangeEnd, days, gridHours, dayNotes, onClose }) {
   if (!employee) return null;
-  const rows = days.map((d) => ({ date: d, hours: gridHours[employee.id + "|" + d] || 0, note: dayNotes[employee.id + "|" + d] || "" })).filter((r) => r.hours > 0 || r.note);
+  const rows = payslipRows(employee, days, gridHours, dayNotes);
   const totalHours = rows.reduce((s, r) => s + r.hours, 0);
   const totalPay = totalHours * employee.rate;
   return (
-    <div className="fixed inset-0 flex items-start sm:items-center justify-center p-0 sm:p-5 overflow-y-auto" style={{ background: "rgba(43,32,21,0.55)", zIndex: 50 }}>
-      <div className="w-full sm:max-w-lg sm:rounded-md my-0 sm:my-8" style={{ background: "white" }}>
+    <div className="fixed inset-0 flex items-start sm:items-center justify-center p-0 sm:p-5 overflow-y-auto" style={{ background: "rgba(11,30,61,0.55)", zIndex: 50 }}>
+      <div className="w-full sm:max-w-lg sm:rounded-2xl my-0 sm:my-8" style={{ background: "white" }}>
         <div className="no-print flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-          <div className="disp text-sm" style={{ color: INK, fontWeight: 700 }}>Payslip Preview</div>
-          <button onClick={onClose} style={{ color: STONE, background: "none", border: "none", cursor: "pointer" }}><XIcon size={18} /></button>
+          <div className="text-sm" style={{ color: NAVY, fontWeight: 700 }}>Payslip Preview</div>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
         </div>
-        <div className="print-area px-6 py-6">
-          <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: `2px solid ${WOOD_DARK}` }}>
-            <div>
-              <div className="brand text-xl" style={{ color: INK, fontWeight: 700 }}>Barkat Home Creations</div>
-              <div className="mono text-xs mt-0.5" style={{ color: CLAY, letterSpacing: "0.08em" }}>PAYROLL STATEMENT</div>
-            </div>
-            <div className="flex items-center justify-center rounded-md" style={{ width: 32, height: 32, background: CLAY }}><HammerIcon size={15} color="white" /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mb-6 text-sm">
-            <div><div className="mono text-xs" style={{ color: STONE }}>EMPLOYEE</div><div style={{ color: INK, fontWeight: 700 }}>{employee.name}</div></div>
-            <div><div className="mono text-xs" style={{ color: STONE }}>HOURLY RATE</div><div style={{ color: INK, fontWeight: 700 }}>{fmtMoney(employee.rate)}</div></div>
-            <div className="col-span-2"><div className="mono text-xs" style={{ color: STONE }}>PAY PERIOD</div><div style={{ color: INK, fontWeight: 700 }}>{fmtDateFull(rangeStart)} — {fmtDateFull(rangeEnd)}</div></div>
-          </div>
-          <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
-            <thead><tr style={{ borderBottom: `1px solid ${WOOD_DARK}` }}><th className="disp text-left py-2 text-xs" style={{ color: INK }}>Date</th><th className="disp text-right py-2 text-xs" style={{ color: INK }}>Hours</th><th className="disp text-right py-2 text-xs" style={{ color: INK }}>Pay</th></tr></thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr><td colSpan={3} className="py-4 text-center text-sm" style={{ color: STONE }}>No hours logged in this period.</td></tr>
-              ) : rows.map((r) => (
-                <React.Fragment key={r.date}>
-                  <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                    <td className="mono py-2 text-xs" style={{ color: INK }}>{fmtDateWeekday(r.date)}</td>
-                    <td className="mono text-right py-2" style={{ color: INK }}>{r.hours || "–"}</td>
-                    <td className="mono text-right py-2" style={{ color: INK }}>{r.hours ? fmtMoney(r.hours * employee.rate) : "–"}</td>
-                  </tr>
-                  {r.note && <tr style={{ borderBottom: `1px solid ${BORDER}` }}><td colSpan={3} className="pb-2 text-xs italic" style={{ color: STONE }}>{r.note}</td></tr>}
-                </React.Fragment>
-              ))}
-            </tbody>
-            <tfoot><tr style={{ borderTop: `2px solid ${WOOD_DARK}` }}><td className="disp py-2.5 text-xs" style={{ color: INK, fontWeight: 700 }}>Total</td><td className="mono text-right py-2.5" style={{ color: INK, fontWeight: 700 }}>{totalHours}h</td><td className="mono text-right py-2.5" style={{ color: CLAY, fontWeight: 700 }}>{fmtMoney(totalPay)}</td></tr></tfoot>
-          </table>
-          <div className="mono text-xs text-center pt-4" style={{ color: STONE, borderTop: `1px solid ${BORDER}` }}>Generated by Barkat Home Creations Workforce Tracker</div>
+        <div className="print-area">
+          <PayslipDoc employee={employee} rangeStart={rangeStart} rangeEnd={rangeEnd} rows={rows} totalHours={totalHours} totalPay={totalPay} />
         </div>
         <div className="no-print flex gap-2 px-5 pb-5">
-          <button onClick={() => window.print()} className="disp text-sm px-4 py-2.5 rounded-md flex-1 flex items-center justify-center gap-1.5" style={{ background: CLAY, color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}><PrinterIcon size={15} />Print / Save as PDF</button>
-          <button onClick={onClose} className="disp text-sm px-4 py-2.5 rounded-md" style={{ background: SAND, color: INK, border: `1px solid ${BORDER}`, fontWeight: 600, cursor: "pointer" }}>Close</button>
+          <button onClick={() => window.print()} className="text-sm px-4 py-2.5 rounded-lg flex-1 flex items-center justify-center gap-1.5 text-white" style={{ background: ROYAL, fontWeight: 700 }}><PrinterIcon size={15} />Print / Save as PDF</button>
+          <button onClick={onClose} className="text-sm px-4 py-2.5 rounded-lg" style={{ background: BG, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Close</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkPayslipModal({ employees, rangeStart, rangeEnd, days, gridHours, dayNotes, onClose }) {
+  const withHours = employees.filter((e) => e.hours > 0);
+  return (
+    <div className="fixed inset-0 flex items-start justify-center p-0 sm:p-5 overflow-y-auto" style={{ background: "rgba(11,30,61,0.55)", zIndex: 50 }}>
+      <div className="w-full sm:max-w-lg sm:rounded-2xl my-0 sm:my-8" style={{ background: "white" }}>
+        <div className="no-print flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
+          <div className="text-sm" style={{ color: NAVY, fontWeight: 700 }}>All Payslips ({withHours.length})</div>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
+        </div>
+        <div className="print-area">
+          {withHours.length === 0 ? (
+            <div className="py-10 text-center text-sm" style={{ color: SLATE }}>No hours logged for anyone in this period.</div>
+          ) : withHours.map((e, i) => {
+            const rows = payslipRows(e, days, gridHours, dayNotes);
+            const totalHours = rows.reduce((s, r) => s + r.hours, 0);
+            return (
+              <div key={e.id} style={{ pageBreakAfter: i < withHours.length - 1 ? "always" : "auto" }}>
+                <PayslipDoc employee={e} rangeStart={rangeStart} rangeEnd={rangeEnd} rows={rows} totalHours={totalHours} totalPay={totalHours * e.rate} />
+              </div>
+            );
+          })}
+        </div>
+        <div className="no-print flex gap-2 px-5 pb-5">
+          <button onClick={() => window.print()} className="text-sm px-4 py-2.5 rounded-lg flex-1 flex items-center justify-center gap-1.5 text-white" style={{ background: ROYAL, fontWeight: 700 }}><PrinterIcon size={15} />Print / Save as PDF</button>
+          <button onClick={onClose} className="text-sm px-4 py-2.5 rounded-lg" style={{ background: BG, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShareButton({ employee, rangeStart, rangeEnd, gridHours, fullWidth }) {
+  const [copied, setCopied] = useState(false);
+  async function doShare() {
+    const days = dateRange(rangeStart, rangeEnd);
+    const hours = days.reduce((s, d) => s + (gridHours[employee.id + "|" + d] || 0), 0);
+    const pay = hours * employee.rate;
+    const text = `Work Pulse Payslip\n${employee.name}\nPeriod: ${rangeStart} to ${rangeEnd}\nHours: ${hours}h\nPay: ${fmtMoney(pay)}\n\nPowered by Barkat Home Creations`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Payslip — " + employee.name, text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch {}
+  }
+  return (
+    <button onClick={doShare} className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 ${fullWidth ? "flex-1 justify-center" : ""}`} style={{ fontWeight: 700, background: BG, color: NAVY, border: `1px solid ${BORDER}` }}>
+      {copied ? <CheckIcon size={12} /> : <ShareIcon size={12} />}{copied ? "Copied" : "Share"}
+    </button>
+  );
+}
+
+function SettingsModal({ employerPin, workspace, onChangePin, allData, onImport, onClose }) {
+  const [changing, setChanging] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const fileRef = useRef(null);
+
+  function copyCode() {
+    if (!workspace) return;
+    navigator.clipboard.writeText(workspace.company_code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function exportBackup() {
+    const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `workpulse-backup-${todayStr()}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function handleImportFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!window.confirm("This will overwrite the shared data for everyone using the app. Continue?")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        onImport(data);
+        alert("Backup imported.");
+      } catch {
+        alert("Couldn't read that file — make sure it's a Work Pulse backup JSON.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-5" style={{ background: "rgba(11,30,61,0.55)", zIndex: 50 }} onClick={onClose}>
+      <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5" style={{ background: CARD }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm" style={{ color: NAVY, fontWeight: 700 }}>Settings</div>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
+        </div>
+
+        {workspace && (
+          <div className="rounded-lg p-4 mb-3" style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})` }}>
+            <div className="text-xs" style={{ color: "#9FB3D9", fontWeight: 600 }}>{workspace.name}</div>
+            <div className="text-xs mt-1 mb-2" style={{ color: "#C9D3E6" }}>Share this code with your crew so they can join:</div>
+            <div className="flex items-center justify-between">
+              <div className="mono text-2xl" style={{ color: ROYAL_L, fontWeight: 700, letterSpacing: "0.15em" }}>{workspace.company_code}</div>
+              <button onClick={copyCode} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.12)", color: "white", fontWeight: 600 }}>
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!changing ? (
+          <button onClick={() => setChanging(true)} className="w-full text-left text-sm px-4 py-3 rounded-lg mb-2 flex items-center gap-2" style={{ background: BG, color: NAVY, fontWeight: 600 }}>
+            <LockIcon size={15} color={ROYAL} />Change Employer PIN
+          </button>
+        ) : (
+          <div className="mb-3">
+            <CreatePin title="New Employer PIN" subtitle="" onDone={(pin) => { onChangePin(pin); setChanging(false); }} onBack={() => setChanging(false)} inline />
+          </div>
+        )}
+
+
+        <button onClick={exportBackup} className="w-full text-left text-sm px-4 py-3 rounded-lg mb-2 flex items-center gap-2" style={{ background: BG, color: NAVY, fontWeight: 600 }}>
+          <DownloadIcon size={15} color={ROYAL} />Export Backup (JSON)
+        </button>
+        <button onClick={() => fileRef.current?.click()} className="w-full text-left text-sm px-4 py-3 rounded-lg mb-2 flex items-center gap-2" style={{ background: BG, color: NAVY, fontWeight: 600 }}>
+          <UploadIcon size={15} color={ROYAL} />Import Backup
+        </button>
+        <input ref={fileRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
+
+        <button onClick={onClose} className="w-full text-sm px-4 py-2.5 rounded-lg mt-2" style={{ background: NAVY, color: "white", fontWeight: 700 }}>Done</button>
       </div>
     </div>
   );
@@ -683,9 +1549,7 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  });
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
 }
 </script>
 </body>
