@@ -1799,6 +1799,15 @@ function ShareButton({ employee, rangeStart, rangeEnd, gridHours, settings, full
   );
 }
 
+function Section({ title, children }) {
+  return (
+    <div className="mb-4 pb-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
+      <div className="text-xs uppercase mb-2" style={{ color: SLATE, fontWeight: 700, letterSpacing: "0.05em" }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
 function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin, onSaveSettings, onSaveSites, allData, onImport, onClose }) {
   const [changing, setChanging] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1867,15 +1876,6 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
       }
     };
     reader.readAsText(file);
-  }
-
-  function Section({ title, children }) {
-    return (
-      <div className="mb-4 pb-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-        <div className="text-xs uppercase mb-2" style={{ color: SLATE, fontWeight: 700, letterSpacing: "0.05em" }}>{title}</div>
-        {children}
-      </div>
-    );
   }
 
   return (
