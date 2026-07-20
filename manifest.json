@@ -1,7 +1,7 @@
 {
-  "name": "Work Pulse — Time, Payroll, Productivity",
-  "short_name": "Work Pulse",
-  "description": "Crew time tracking and payroll, powered by Barkat Home Creations.",
+  "name": "LabourArc — Time, Payroll, Productivity",
+  "short_name": "LabourArc",
+  "description": "Crew time tracking and payroll, powered by Barkat Home Creations LTD.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
