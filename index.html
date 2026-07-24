@@ -128,6 +128,118 @@ async function biometricPrompt() {
   }
 }
 
+/* ---- Haptic feedback (Android supports this; iOS Safari silently ignores it) ---- */
+function haptic(pattern = 15) {
+  if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch {} }
+}
+
+/* ---- Add-to-Calendar via a downloadable .ics file (works on iOS and Android, no permission needed) ---- */
+function icsDate(dateStr) {
+  return dateStr.replace(/-/g, "");
+}
+function downloadICS({ title, date, description }) {
+  const dt = icsDate(date);
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//LabourArc//EN",
+    "BEGIN:VEVENT",
+    `UID:${uid()}@labourarc`,
+    `DTSTAMP:${dt}T090000Z`,
+    `DTSTART;VALUE=DATE:${dt}`,
+    `SUMMARY:${title}`,
+    `DESCRIPTION:${(description || "").replace(/\n/g, "\\n")}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/\s+/g, "_")}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ---- Local "remind me" notification (fires while the app is open; not a background push) ---- */
+async function requestNotifyPermission() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  const res = await Notification.requestPermission();
+  return res === "granted";
+}
+function showLocalNotification(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try { new Notification(title, { body, icon: "icons/icon-192.png" }); } catch {}
+}
+
+/* ---- Real push notifications (work even when the app is closed, Android + installed iOS) ---- */
+const VAPID_PUBLIC_KEY = "BNqrXuupY4GMCePog4oCn1oDQM9_EdRJrgt39rP0TbGWgI5MD3zkOJVB3coj1Mohl1z8btZ7MFsk3HtcKNBY3WQ";
+const SEND_PUSH_URL = `${SUPABASE_URL}/functions/v1/quick-task`;
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+async function pushSupported() {
+  return "serviceWorker" in navigator && "PushManager" in window;
+}
+
+async function subscribeToPush(workspaceId, subscriberType, employeeId) {
+  if (!(await pushSupported())) return { ok: false, reason: "unsupported" };
+  const granted = await requestNotifyPermission();
+  if (!granted) return { ok: false, reason: "denied" };
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    await sb.from("push_subscriptions").insert({
+      workspace_id: workspaceId,
+      subscriber_type: subscriberType,
+      employee_id: employeeId || null,
+      subscription: sub.toJSON(),
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: String(e) };
+  }
+}
+
+async function sendPushTo(subscriptions, title, body) {
+  for (const row of subscriptions) {
+    try {
+      await fetch(SEND_PUSH_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ subscription: row.subscription, title, body }),
+      });
+    } catch {}
+  }
+}
+
+async function notifyEmployer(workspaceId, title, body) {
+  const { data } = await sb.from("push_subscriptions").select("subscription").eq("workspace_id", workspaceId).eq("subscriber_type", "employer");
+  if (data && data.length) await sendPushTo(data, title, body);
+}
+async function notifyEmployee(workspaceId, employeeId, title, body) {
+  const { data } = await sb.from("push_subscriptions").select("subscription").eq("workspace_id", workspaceId).eq("subscriber_type", "employee").eq("employee_id", employeeId);
+  if (data && data.length) await sendPushTo(data, title, body);
+}
+
 /* ---- Icons ---- */
 function Icon({ children, size = 16, color = "currentColor" }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -371,7 +483,7 @@ function App() {
             }
             return (
               <EmployeeApp
-                me={me} entries={entries} dayNotes={dayNotes} jobSites={jobSites} settings={settings}
+                me={me} entries={entries} dayNotes={dayNotes} jobSites={jobSites} settings={settings} workspaceId={activeWorkspaceId}
                 persist={persist} allEntries={entries} switchUser={switchUser}
               />
             );
@@ -838,6 +950,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
   function toggleLogEmpAll() { setLogEmpIds((prev) => (prev.length === filteredEmployees.length ? [] : filteredEmployees.map((e) => e.id))); }
   function addEntry() {
     if (logEmpIds.length === 0 || !logDate || !logHours || Number(logHours) <= 0) return;
+    haptic(15);
     const newEntries = logEmpIds.map((id) => ({ id: uid(), employeeId: id, date: logDate, hours: Number(logHours), siteId: logSiteId || null }));
     saveEntriesLocal([...entries, ...newEntries]);
     setLogHours(""); setLogEmpIds([]); setLogSiteId("");
@@ -913,10 +1026,16 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
   const grandTotalPay = empRangeTotals.reduce((s, e) => s + e.pay, 0);
 
   function togglePaid(employeeId) {
+    haptic(20);
     const key = `${employeeId}|${rangeStart}|${rangeEnd}`;
     const next = { ...paidRanges };
-    if (next[key]) delete next[key]; else next[key] = true;
+    const wasPaid = !!next[key];
+    if (wasPaid) delete next[key]; else next[key] = true;
     savePaidLocal(next);
+    if (!wasPaid && workspace) {
+      const emp = employees.find((e) => e.id === employeeId);
+      notifyEmployee(workspace.id, employeeId, "Payroll Paid", `Your pay for ${rangeStart} to ${rangeEnd} has been marked as paid${emp ? ", " + emp.name : ""}.`);
+    }
   }
   function saveNote(employeeId, date, text) {
     const key = employeeId + "|" + date;
@@ -1203,6 +1322,13 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
                           <PrinterIcon size={12} />Payslip
                         </button>
                         <ShareButton employee={e} rangeStart={rangeStart} rangeEnd={rangeEnd} gridHours={gridHours} settings={settings} />
+                        <button
+                          onClick={() => { haptic(10); downloadICS({ title: `Pay ${e.name}`, date: rangeEnd, description: `LabourArc payroll for ${e.name}, period ${rangeStart} to ${rangeEnd}: ${fmtMoney(e.net, settings.currency)} net.` }); }}
+                          className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5"
+                          style={{ fontWeight: 700, background: BG, color: NAVY, border: `1px solid ${BORDER}` }}
+                        >
+                          <CalendarIcon size={12} />Add Pay Date
+                        </button>
                       </div>
                     </div>
                   );
@@ -1294,7 +1420,7 @@ function minutesBetween(start, end) {
   return mins;
 }
 
-function EmployeeApp({ me, entries, dayNotes, jobSites, settings, persist, allEntries, switchUser }) {
+function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, persist, allEntries, switchUser }) {
   const [tab, setTab] = useState("log");
   const [logDate, setLogDate] = useState(todayStr());
   const [startTime, setStartTime] = useState("");
@@ -1305,18 +1431,56 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, persist, allEn
   const [rangeEnd, setRangeEnd] = useState(todayStr());
   const [payslipOpen, setPayslipOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [remindMe, setRemindMe] = useState(() => localStorage.getItem("la_remind_" + me.id) === "1");
+  const [pushOn, setPushOn] = useState(() => localStorage.getItem("la_push_" + me.id) === "1");
+  const [pushBusy, setPushBusy] = useState(false);
 
   const myEntries = useMemo(() => allEntries.filter((t) => t.employeeId === me.id).sort((a, b) => (a.date < b.date ? 1 : -1)), [allEntries, me.id]);
+
+  async function togglePush() {
+    if (pushOn) { setPushOn(false); localStorage.setItem("la_push_" + me.id, "0"); return; }
+    setPushBusy(true);
+    const res = await subscribeToPush(workspaceId, "employee", me.id);
+    setPushBusy(false);
+    if (res.ok) { setPushOn(true); localStorage.setItem("la_push_" + me.id, "1"); }
+    else alert("Couldn't enable notifications — check your device's notification settings and try again.");
+  }
+
+  async function toggleRemindMe() {
+    if (!remindMe) {
+      const ok = await requestNotifyPermission();
+      if (!ok) { alert("Notifications are blocked for this app — enable them in your device settings to use reminders."); return; }
+    }
+    const next = !remindMe;
+    setRemindMe(next);
+    localStorage.setItem("la_remind_" + me.id, next ? "1" : "0");
+  }
+
+  useEffect(() => {
+    if (!remindMe) return;
+    const loggedToday = myEntries.some((t) => t.date === todayStr());
+    if (!loggedToday) {
+      const t = setTimeout(() => showLocalNotification("Don't forget to log your hours", "Tap LabourArc to add today's hours before you forget."), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [remindMe, myEntries]);
 
   const computedHours = startTime && endTime ? roundToHalfHour(minutesBetween(startTime, endTime) / 60) : 0;
 
   function addEntry() {
     if (!logDate || !startTime || !endTime || computedHours <= 0) return;
+    haptic(15);
     const entry = { id: uid(), employeeId: me.id, date: logDate, hours: computedHours, startTime, endTime, siteId: logSiteId || null };
     persist("entries", [...allEntries, entry], () => {});
     if (logNote.trim()) {
       const key = me.id + "|" + logDate;
       persist("dayNotes", { ...dayNotes, [key]: logNote.trim() }, () => {});
+    }
+    if (workspaceId) {
+      notifyEmployer(workspaceId, "Hours logged", `${me.name} logged ${computedHours}h on ${fmtDate(logDate)}.`);
+      if (computedHours > 12) {
+        notifyEmployer(workspaceId, "Unusually long day", `${me.name} logged ${computedHours}h on ${fmtDate(logDate)} — you may want to double check this.`);
+      }
     }
     setStartTime(""); setEndTime(""); setLogNote(""); setLogSiteId("");
   }
@@ -1368,6 +1532,14 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, persist, allEn
       <div className="max-w-4xl mx-auto px-5 py-6 no-print w-full flex-1">
         {tab === "log" && (
           <div>
+            <button onClick={togglePush} disabled={pushBusy} className="w-full text-left text-xs px-3 py-2 rounded-lg mb-2 flex items-center justify-between" style={{ background: pushOn ? "#EAF0FE" : BG, color: NAVY, border: `1px solid ${BORDER}` }}>
+              <span style={{ fontWeight: 600 }}>Push notifications (payroll updates)</span>
+              <span style={{ color: pushOn ? ROYAL : SLATE, fontWeight: 700 }}>{pushBusy ? "…" : pushOn ? "On" : "Off"}</span>
+            </button>
+            <button onClick={toggleRemindMe} className="w-full text-left text-xs px-3 py-2 rounded-lg mb-3 flex items-center justify-between" style={{ background: remindMe ? "#EAF0FE" : BG, color: NAVY, border: `1px solid ${BORDER}` }}>
+              <span style={{ fontWeight: 600 }}>Remind me to log hours today</span>
+              <span style={{ color: remindMe ? ROYAL : SLATE, fontWeight: 700 }}>{remindMe ? "On" : "Off"}</span>
+            </button>
             <Card icon={ClockIcon} title="Log Today's Hours">
               <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mono mb-2" style={{ borderColor: BORDER }} />
               <div className="flex gap-2 mb-2">
@@ -1816,12 +1988,24 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
   const [newDedLabel, setNewDedLabel] = useState("");
   const [newDedType, setNewDedType] = useState("percent");
   const [newDedValue, setNewDedValue] = useState("");
+  const [pushOn, setPushOn] = useState(() => localStorage.getItem("la_push_employer") === "1");
+  const [pushBusy, setPushBusy] = useState(false);
   const fileRef = useRef(null);
   const logoRef = useRef(null);
 
   function save(next) {
     setLocal(next);
     onSaveSettings(next);
+  }
+
+  async function toggleEmployerPush() {
+    if (pushOn) { setPushOn(false); localStorage.setItem("la_push_employer", "0"); return; }
+    if (!workspace) return;
+    setPushBusy(true);
+    const res = await subscribeToPush(workspace.id, "employer", null);
+    setPushBusy(false);
+    if (res.ok) { setPushOn(true); localStorage.setItem("la_push_employer", "1"); }
+    else alert("Couldn't enable notifications — check your device's notification settings and try again.");
   }
 
   function copyCode() {
@@ -1898,6 +2082,13 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
             </div>
           </div>
         )}
+
+        <Section title="Notifications">
+          <button onClick={toggleEmployerPush} disabled={pushBusy} className="w-full text-left text-sm px-4 py-3 rounded-lg flex items-center justify-between" style={{ background: pushOn ? "#EAF0FE" : BG, color: NAVY, fontWeight: 600 }}>
+            <span>Push notifications (hours logged, unusual hours)</span>
+            <span style={{ color: pushOn ? ROYAL : SLATE, fontWeight: 700 }}>{pushBusy ? "…" : pushOn ? "On" : "Off"}</span>
+          </button>
+        </Section>
 
         <Section title="Security">
           {!changing ? (
@@ -1989,7 +2180,7 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
           {local.company.logo && <img src={local.company.logo} alt="" style={{ maxHeight: 40, marginBottom: 6 }} />}
           {logoError && <div className="text-xs mb-2" style={{ color: RED }}>{logoError}</div>}
           <button onClick={() => logoRef.current?.click()} className="text-xs px-3 py-2 rounded-lg" style={{ background: BG, color: NAVY, fontWeight: 600 }}>{local.company.logo ? "Change Logo" : "Upload Logo"}</button>
-          <input ref={logoRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoFile} className="hidden" />
+          <input ref={logoRef} type="file" accept="image/png,image/jpeg" capture="environment" onChange={handleLogoFile} className="hidden" />
         </Section>
 
         <Section title="Tax / Deductions">
