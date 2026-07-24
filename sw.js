@@ -1,4 +1,4 @@
-const CACHE_NAME = "workpulse-v2";
+const CACHE_NAME = "labourarc-v3";
 const APP_SHELL = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", (event) => {
@@ -30,5 +30,31 @@ self.addEventListener("fetch", (event) => {
         return networkResponse;
       })
       .catch(() => caches.match(event.request))
+  );
+});
+
+// Show a real system notification when a push arrives (works even if the app is closed).
+self.addEventListener("push", (event) => {
+  let data = { title: "LabourArc", body: "You have an update." };
+  try { data = event.data.json(); } catch {}
+  event.waitUntil(
+    self.registration.showNotification(data.title || "LabourArc", {
+      body: data.body || "",
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+    })
+  );
+});
+
+// Tapping the notification opens (or focuses) the app.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow("./index.html");
+    })
   );
 });
