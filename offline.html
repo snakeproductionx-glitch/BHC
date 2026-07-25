@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LabourArc — Offline</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0B1E3D;
+    color: #fff;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+  }
+  .wrap { max-width: 320px; }
+  .icon { font-size: 48px; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  p { font-size: 14px; color: #A9B4C7; line-height: 1.5; margin-bottom: 24px; }
+  button {
+    background: #fff; color: #0B1E3D; border: none; padding: 12px 24px;
+    border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="icon">📡</div>
+    <h1>You're offline</h1>
+    <p>LabourArc can't reach the server right now. Check your connection and try again — any hours already synced are safe.</p>
+    <button onclick="window.location.reload()">Try Again</button>
+  </div>
+</body>
+</html>
