@@ -1,60 +1,69 @@
-const CACHE_NAME = "labourarc-v3";
-const APP_SHELL = ["./", "./index.html", "./manifest.json"];
+// LabourArc Service Worker — basic offline support
+// Caches the app shell so the app still opens (with last-seen UI) when offline,
+// instead of showing a blank white screen.
 
-self.addEventListener("install", (event) => {
+const CACHE_NAME = 'labourarc-cache-v1';
+
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './offline.html',
+];
+
+// Install: pre-cache the core app shell
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
   );
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
+// Activate: clean up old cache versions
+self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      )
     )
   );
   self.clients.claim();
 });
 
-// Network-first: always try to get the latest version online.
-// Only fall back to the cached copy if there's no connection.
-self.addEventListener("fetch", (event) => {
+// Fetch: network-first for navigation, falling back to cache, then offline page.
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+
+  if (request.method !== 'GET') return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(() =>
+          caches.match(request).then((cached) => cached || caches.match('./offline.html'))
+        )
+    );
+    return;
+  }
+
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (event.request.method === "GET" && networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return networkResponse;
-      })
-      .catch(() => caches.match(event.request))
-  );
-});
-
-// Show a real system notification when a push arrives (works even if the app is closed).
-self.addEventListener("push", (event) => {
-  let data = { title: "LabourArc", body: "You have an update." };
-  try { data = event.data.json(); } catch {}
-  event.waitUntil(
-    self.registration.showNotification(data.title || "LabourArc", {
-      body: data.body || "",
-      icon: "icons/icon-192.png",
-      badge: "icons/icon-192.png",
-    })
-  );
-});
-
-// Tapping the notification opens (or focuses) the app.
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ("focus" in client) return client.focus();
-      }
-      if (clients.openWindow) return clients.openWindow("./index.html");
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request)
+        .then((response) => {
+          if (!response || response.status !== 200 || response.type === 'error') {
+            return response;
+          }
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => new Response('', { status: 408, statusText: 'Offline' }));
     })
   );
 });
