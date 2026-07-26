@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
 <title>LabourArc — Time, Payroll, Productivity</title>
 <link rel="manifest" href="manifest.json" />
-<meta name="theme-color" content="#0B1E3D" />
+<meta name="theme-color" content="#14171A" />
 <link rel="icon" href="icons/favicon-32.png" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -15,13 +15,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
-  body { margin: 0; }
-  .brand { font-family: 'Manrope', sans-serif; letter-spacing: -0.02em; }
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+  body { margin: 0; background: #14171A; }
+  .brand { font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0.01em; text-transform: uppercase; }
   .mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
-  input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.35); }
+  input[type=date]::-webkit-calendar-picker-indicator, input[type=time]::-webkit-calendar-picker-indicator { filter: invert(1); }
   ::-webkit-scrollbar { height: 6px; }
-  ::-webkit-scrollbar-thumb { background: #C7CEDB; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb { background: #2A2E33; border-radius: 3px; }
+  /* Sharpen corners app-wide for the rugged look, without touching every className */
+  .rounded-xl, .rounded-lg, .rounded-2xl { border-radius: 4px !important; }
+  .rounded-full { border-radius: 4px !important; }
+  /* Hazard stripe divider used under headers */
+  .stripe-divider { height: 5px; background: repeating-linear-gradient(135deg, #FF6B1A 0 12px, #14171A 12px 24px); }
   @media print {
     body * { visibility: hidden; }
     .print-area, .print-area * { visibility: visible; }
@@ -38,16 +43,19 @@ const SUPABASE_URL = "https://qzuevyydokdwceklbwhl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_jW87hsRT7oNqJ3owEY5rPg_842GyDti";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const NAVY = "#0B1E3D";
-const NAVY2 = "#132A50";
-const ROYAL = "#1E5FD9";
-const ROYAL_L = "#4C7FE8";
-const BG = "#F4F6FB";
-const CARD = "#FFFFFF";
-const SLATE = "#5B6472";
-const BORDER = "#E2E6EE";
-const GREEN = "#1E8E5A";
-const RED = "#D33F3F";
+const DARK = "#14171A";
+const DARK2 = "#1E2226";
+const NAVY = "#F4F1EA";
+const NAVY2 = "#1E2226";
+const ROYAL = "#FF6B1A";
+const ROYAL_L = "#FF8A47";
+const BG = "#14171A";
+const CARD = "#1E2226";
+const SLATE = "#9AA0A8";
+const BORDER = "#2A2E33";
+const GREEN = "#6FCF97";
+const RED = "#EF5350";
+const YELLOW = "#FFC93C";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -514,7 +522,7 @@ function BrandHeader({ right }) {
   return (
     <div className="flex items-center justify-between px-5 pt-6 pb-2 max-w-4xl mx-auto w-full">
       <div className="flex items-center gap-2">
-        <div className="brand text-2xl" style={{ fontWeight: 800 }}>
+        <div className="brand text-3xl" style={{ fontWeight: 800 }}>
           <span style={{ color: NAVY }}>Labour</span><span style={{ color: ROYAL }}>Arc</span>
         </div>
       </div>
@@ -526,14 +534,15 @@ function BrandHeader({ right }) {
 function RoleGate({ setRole }) {
   return (
     <div className="flex-1 flex flex-col">
+      <div className="stripe-divider" />
       <BrandHeader />
       <div className="flex-1 flex flex-col items-center justify-center px-6">
-        <div className="mono text-xs mb-8" style={{ color: SLATE, letterSpacing: "0.1em" }}>TIME · PAYROLL · PRODUCTIVITY</div>
+        <div className="mono text-xs mb-8" style={{ color: SLATE, letterSpacing: "0.15em" }}>TIME · PAYROLL · PRODUCTIVITY</div>
         <div className="w-full max-w-xs space-y-3">
-          <button onClick={() => setRole("employer")} className="w-full py-4 rounded-2xl text-white brand text-lg" style={{ background: `linear-gradient(135deg, ${ROYAL_L}, ${ROYAL})`, fontWeight: 800 }}>
+          <button onClick={() => setRole("employer")} className="w-full py-4 rounded-2xl text-white brand text-xl" style={{ background: ROYAL, fontWeight: 800, letterSpacing: "0.03em" }}>
             I'm the Employer
           </button>
-          <button onClick={() => setRole("employee")} className="w-full py-4 rounded-2xl brand text-lg" style={{ background: CARD, color: NAVY, border: `2px solid ${BORDER}`, fontWeight: 800 }}>
+          <button onClick={() => setRole("employee")} className="w-full py-4 rounded-2xl brand text-xl" style={{ background: CARD, color: NAVY, border: `2px solid ${BORDER}`, fontWeight: 800, letterSpacing: "0.03em" }}>
             I'm a Crew Member
           </button>
         </div>
@@ -1055,25 +1064,26 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
 
   return (
     <div className="flex-1 flex flex-col">
-      <div className="no-print" style={{ background: `linear-gradient(135deg, ${NAVY} 0%, ${NAVY2} 100%)` }}>
+      <div className="no-print" style={{ background: DARK }}>
+        <div className="stripe-divider" />
         <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
           <div className="flex items-center justify-between">
-            <div className="brand text-2xl" style={{ fontWeight: 800 }}>
-              <span style={{ color: "white" }}>Labour</span><span style={{ color: ROYAL_L }}>Arc</span>
+            <div className="brand text-3xl" style={{ fontWeight: 800 }}>
+              <span style={{ color: "#F4F1EA" }}>Labour</span><span style={{ color: ROYAL }}>Arc</span>
             </div>
             <div className="flex items-center gap-3">
-              {saving && <span className="text-xs" style={{ color: "#9FB3D9" }}>Saving…</span>}
-              <button onClick={() => setContactOpen(true)} className="text-xs" style={{ color: "#9FB3D9" }}>Contact Us</button>
-              <button onClick={() => setSettingsOpen(true)} style={{ color: "#C9D3E6" }}><GearIcon size={20} /></button>
-              <button onClick={switchUser} className="text-xs" style={{ color: "#9FB3D9" }}>Log Out</button>
+              {saving && <span className="text-xs" style={{ color: SLATE }}>Saving…</span>}
+              <button onClick={() => setContactOpen(true)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Contact Us</button>
+              <button onClick={() => setSettingsOpen(true)} style={{ color: "#C7CBD1" }}><GearIcon size={20} /></button>
+              <button onClick={switchUser} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Log Out</button>
             </div>
           </div>
-          <div className="mono text-xs mt-1" style={{ color: "#7C8FB5", letterSpacing: "0.08em" }}>EMPLOYER DASHBOARD</div>
-          <div className="flex gap-5 mt-5 border-b overflow-x-auto" style={{ borderColor: "rgba(255,255,255,0.12)", scrollbarWidth: "none" }}>
+          <div className="mono text-xs mt-1" style={{ color: SLATE, letterSpacing: "0.15em" }}>EMPLOYER DASHBOARD</div>
+          <div className="flex gap-5 mt-5 border-b overflow-x-auto" style={{ borderColor: BORDER, scrollbarWidth: "none" }}>
             {tabs.map((t) => {
               const Ic = t.icon; const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => setTab(t.id)} className="text-sm pb-3 flex items-center gap-1.5 flex-shrink-0" style={{ fontWeight: 600, color: active ? "white" : "#8C9BBD", borderBottom: `2px solid ${active ? ROYAL_L : "transparent"}`, whiteSpace: "nowrap" }}>
+                <button key={t.id} onClick={() => setTab(t.id)} className="brand text-sm pb-3 flex items-center gap-1.5 flex-shrink-0" style={{ fontWeight: 700, letterSpacing: "0.02em", color: active ? ROYAL : SLATE, borderBottom: `2px solid ${active ? ROYAL : "transparent"}`, whiteSpace: "nowrap" }}>
                   <Ic size={14} />{t.label}
                 </button>
               );
@@ -1244,7 +1254,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
                           const hasNote = !!dayNotes[e.id + "|" + d];
                           return (
                             <td key={e.id} className="text-right px-1 py-1">
-                              <button onClick={() => setNoteCell({ employeeId: e.id, date: d })} className="relative mono w-full text-right px-2 py-1.5 rounded-lg" style={{ color: h ? ROYAL : "#C7CEDB", background: hasNote ? "#EAF0FE" : "transparent" }}>
+                              <button onClick={() => setNoteCell({ employeeId: e.id, date: d })} className="relative mono w-full text-right px-2 py-1.5 rounded-lg" style={{ color: h ? ROYAL : SLATE, background: hasNote ? "rgba(255,107,26,0.15)" : "transparent" }}>
                                 {h ? h : "–"}
                                 {hasNote && <span className="absolute rounded-full" style={{ top: 3, right: 3, width: 5, height: 5, background: ROYAL }} />}
                               </button>
@@ -1273,7 +1283,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
             <DateRangeBar rangeStart={rangeStart} rangeEnd={rangeEnd} setRangeStart={setRangeStart} setRangeEnd={setRangeEnd} setPreset={setPreset} settings={settings} />
             {employees.length === 0 ? <Empty text="Add crew to see payroll." /> : (
               <div className="space-y-3">
-                <div className="flex justify-between items-center px-5 py-4 rounded-xl mb-1 shadow-sm" style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})`, color: "white" }}>
+                <div className="flex justify-between items-center px-5 py-4 rounded-xl mb-1 shadow-sm" style={{ background: `linear-gradient(135deg, ${DARK}, ${DARK2})`, color: "white" }}>
                   <div>
                     <div className="text-xs" style={{ color: "#9FB3D9", fontWeight: 600 }}>Period Total</div>
                     <div className="mono text-xs mt-0.5" style={{ color: ROYAL_L }}>{rangeStart} to {rangeEnd}</div>
@@ -1318,7 +1328,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
                         <button onClick={() => togglePaid(e.id)} className="text-xs px-3 py-1.5 rounded-full" style={{ fontWeight: 700, background: paid ? BG : GREEN, color: paid ? NAVY : "white", border: paid ? `1px solid ${BORDER}` : "none" }}>
                           {paid ? "Mark Unpaid" : "Mark Paid"}
                         </button>
-                        <button onClick={() => setPayslipEmp(e.id)} disabled={e.hours === 0} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5" style={{ fontWeight: 700, background: e.hours === 0 ? "#E5E9F2" : ROYAL, color: "white" }}>
+                        <button onClick={() => setPayslipEmp(e.id)} disabled={e.hours === 0} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5" style={{ fontWeight: 700, background: e.hours === 0 ? BORDER : ROYAL, color: "white" }}>
                           <PrinterIcon size={12} />Payslip
                         </button>
                         <ShareButton employee={e} rangeStart={rangeStart} rangeEnd={rangeEnd} gridHours={gridHours} settings={settings} />
@@ -1504,23 +1514,24 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
 
   return (
     <div className="flex-1 flex flex-col">
-      <div className="no-print" style={{ background: `linear-gradient(135deg, ${NAVY} 0%, ${NAVY2} 100%)` }}>
+      <div className="no-print" style={{ background: DARK }}>
+        <div className="stripe-divider" />
         <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
           <div className="flex items-center justify-between">
-            <div className="brand text-2xl" style={{ fontWeight: 800 }}>
-              <span style={{ color: "white" }}>Labour</span><span style={{ color: ROYAL_L }}>Arc</span>
+            <div className="brand text-3xl" style={{ fontWeight: 800 }}>
+              <span style={{ color: "#F4F1EA" }}>Labour</span><span style={{ color: ROYAL }}>Arc</span>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setContactOpen(true)} className="text-xs" style={{ color: "#9FB3D9" }}>Contact Us</button>
-              <button onClick={switchUser} className="text-xs" style={{ color: "#9FB3D9" }}>Log Out</button>
+              <button onClick={() => setContactOpen(true)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Contact Us</button>
+              <button onClick={switchUser} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Log Out</button>
             </div>
           </div>
-          <div className="mono text-xs mt-1" style={{ color: "#7C8FB5" }}>{me.name.toUpperCase()}</div>
-          <div className="flex gap-5 mt-5 border-b" style={{ borderColor: "rgba(255,255,255,0.12)" }}>
+          <div className="mono text-xs mt-1" style={{ color: SLATE, letterSpacing: "0.1em" }}>{me.name.toUpperCase()}</div>
+          <div className="flex gap-5 mt-5 border-b" style={{ borderColor: BORDER }}>
             {[{ id: "log", label: "Log Hours", icon: ClockIcon }, { id: "pay", label: "My Payroll", icon: DollarIcon }].map((t) => {
               const Ic = t.icon; const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => setTab(t.id)} className="text-sm pb-3 flex items-center gap-1.5" style={{ fontWeight: 600, color: active ? "white" : "#8C9BBD", borderBottom: `2px solid ${active ? ROYAL_L : "transparent"}` }}>
+                <button key={t.id} onClick={() => setTab(t.id)} className="brand text-sm pb-3 flex items-center gap-1.5" style={{ fontWeight: 700, letterSpacing: "0.02em", color: active ? ROYAL : SLATE, borderBottom: `2px solid ${active ? ROYAL : "transparent"}` }}>
                   <Ic size={14} />{t.label}
                 </button>
               );
@@ -1532,11 +1543,11 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
       <div className="max-w-4xl mx-auto px-5 py-6 no-print w-full flex-1">
         {tab === "log" && (
           <div>
-            <button onClick={togglePush} disabled={pushBusy} className="w-full text-left text-xs px-3 py-2 rounded-lg mb-2 flex items-center justify-between" style={{ background: pushOn ? "#EAF0FE" : BG, color: NAVY, border: `1px solid ${BORDER}` }}>
+            <button onClick={togglePush} disabled={pushBusy} className="w-full text-left text-xs px-3 py-2 rounded-lg mb-2 flex items-center justify-between" style={{ background: pushOn ? "rgba(255,107,26,0.15)" : BG, color: NAVY, border: `1px solid ${BORDER}` }}>
               <span style={{ fontWeight: 600 }}>Push notifications (payroll updates)</span>
               <span style={{ color: pushOn ? ROYAL : SLATE, fontWeight: 700 }}>{pushBusy ? "…" : pushOn ? "On" : "Off"}</span>
             </button>
-            <button onClick={toggleRemindMe} className="w-full text-left text-xs px-3 py-2 rounded-lg mb-3 flex items-center justify-between" style={{ background: remindMe ? "#EAF0FE" : BG, color: NAVY, border: `1px solid ${BORDER}` }}>
+            <button onClick={toggleRemindMe} className="w-full text-left text-xs px-3 py-2 rounded-lg mb-3 flex items-center justify-between" style={{ background: remindMe ? "rgba(255,107,26,0.15)" : BG, color: NAVY, border: `1px solid ${BORDER}` }}>
               <span style={{ fontWeight: 600 }}>Remind me to log hours today</span>
               <span style={{ color: remindMe ? ROYAL : SLATE, fontWeight: 700 }}>{remindMe ? "On" : "Off"}</span>
             </button>
@@ -1587,14 +1598,14 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
         {tab === "pay" && (
           <div>
             <DateRangeBar rangeStart={rangeStart} rangeEnd={rangeEnd} setRangeStart={setRangeStart} setRangeEnd={setRangeEnd} setPreset={setPreset} settings={settings} />
-            <div className="rounded-xl p-5 shadow-sm mb-4" style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})`, color: "white" }}>
+            <div className="rounded-xl p-5 shadow-sm mb-4" style={{ background: `linear-gradient(135deg, ${DARK}, ${DARK2})`, color: "white" }}>
               <div className="text-xs" style={{ color: "#9FB3D9", fontWeight: 600 }}>Your Net Pay — {rangeStart} to {rangeEnd}</div>
               <div className="mono text-3xl mt-1" style={{ color: ROYAL_L, fontWeight: 700 }}>{fmtMoney(calc.net, settings.currency)}</div>
               <div className="mono text-sm mt-1" style={{ color: "#C9D3E6" }}>{calc.totalHours.toFixed(2)} hours · {fmtMoney(me.rate, settings.currency)}/hr</div>
               {calc.totalDeductions > 0 && <div className="mono text-xs mt-1" style={{ color: "#C9D3E6" }}>Gross {fmtMoney(calc.gross, settings.currency)} − {fmtMoney(calc.totalDeductions, settings.currency)} deductions</div>}
             </div>
             <div className="flex gap-2 mb-4">
-              <button onClick={() => setPayslipOpen(true)} disabled={calc.totalHours === 0} className="flex-1 text-sm px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5" style={{ background: calc.totalHours === 0 ? "#E5E9F2" : ROYAL, color: "white", fontWeight: 700 }}>
+              <button onClick={() => setPayslipOpen(true)} disabled={calc.totalHours === 0} className="flex-1 text-sm px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5" style={{ background: calc.totalHours === 0 ? BORDER : ROYAL, color: "white", fontWeight: 700 }}>
                 <PrinterIcon size={14} />Payslip
               </button>
               <ShareButton employee={me} rangeStart={rangeStart} rangeEnd={rangeEnd} gridHours={gridHours} settings={settings} fullWidth />
@@ -1625,14 +1636,18 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
 
 function Card({ icon: Ic, title, children }) {
   return (
-    <div className="p-4 rounded-xl mb-5 shadow-sm" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
-      {title && <div className="text-sm mb-3 flex items-center gap-2" style={{ color: NAVY, fontWeight: 700 }}>{Ic && <Ic size={15} color={ROYAL} />}{title}</div>}
+    <div className="p-4 rounded-xl mb-5 shadow-sm relative overflow-hidden" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+      <div style={{ position: "absolute", top: 0, left: 0, width: 4, height: "100%", background: ROYAL }} />
+      {title && <div className="brand text-base mb-3 flex items-center gap-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>{Ic && <Ic size={15} color={ROYAL} />}{title}</div>}
       {children}
     </div>
   );
 }
 function Row({ children }) {
-  return <div className="flex items-center justify-between px-4 py-3 rounded-xl shadow-sm mb-2" style={{ background: CARD, border: `1px solid ${BORDER}` }}>{children}</div>;
+  return <div className="flex items-center justify-between px-4 py-3 rounded-xl shadow-sm mb-2 relative overflow-hidden" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+    <div style={{ position: "absolute", top: 0, left: 0, width: 3, height: "100%", background: ROYAL }} />
+    <div className="flex items-center justify-between w-full" style={{ paddingLeft: 6 }}>{children}</div>
+  </div>;
 }
 function Empty({ text }) { return <div className="text-center py-10 text-sm" style={{ color: SLATE }}>{text}</div>; }
 
@@ -1640,7 +1655,7 @@ function SearchBar({ value, onChange, placeholder }) {
   return (
     <div className="relative mb-3">
       <div className="absolute" style={{ left: 12, top: 10, color: SLATE }}><SearchIcon size={15} /></div>
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER, background: CARD, color: NAVY }} />
     </div>
   );
 }
@@ -1840,11 +1855,11 @@ function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings }) {
   const otOn = settings.overtime && settings.overtime.enabled;
   return (
     <div className="px-6 py-6">
-      <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: `2px solid ${NAVY}` }}>
+      <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: `2px solid ${DARK}` }}>
         <div>
           {company.logo && <img src={company.logo} alt="" style={{ maxHeight: 44, maxWidth: 160, objectFit: "contain", marginBottom: 6 }} />}
           <div className="brand text-xl" style={{ fontWeight: 800 }}>
-            {company.name ? <span style={{ color: NAVY }}>{company.name}</span> : (<><span style={{ color: NAVY }}>Labour</span><span style={{ color: ROYAL }}>Arc</span></>)}
+            {company.name ? <span style={{ color: DARK }}>{company.name}</span> : (<><span style={{ color: DARK }}>Labour</span><span style={{ color: ROYAL }}>Arc</span></>)}
           </div>
           {(company.address || company.phone || company.email) && (
             <div className="text-xs mt-1" style={{ color: SLATE }}>
@@ -1855,21 +1870,21 @@ function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings }) {
         <div className="mono text-xs" style={{ color: ROYAL }}>PAYROLL STATEMENT</div>
       </div>
       <div className="grid grid-cols-2 gap-3 mb-6 text-sm">
-        <div><div className="mono text-xs" style={{ color: SLATE }}>EMPLOYEE</div><div style={{ color: NAVY, fontWeight: 700 }}>{employee.name}</div></div>
-        <div><div className="mono text-xs" style={{ color: SLATE }}>HOURLY RATE</div><div style={{ color: NAVY, fontWeight: 700 }}>{fmtMoney(employee.rate, currency)}</div></div>
-        <div className="col-span-2"><div className="mono text-xs" style={{ color: SLATE }}>PAY PERIOD</div><div style={{ color: NAVY, fontWeight: 700 }}>{fmtDateFull(rangeStart)} — {fmtDateFull(rangeEnd)}</div></div>
+        <div><div className="mono text-xs" style={{ color: SLATE }}>EMPLOYEE</div><div style={{ color: DARK, fontWeight: 700 }}>{employee.name}</div></div>
+        <div><div className="mono text-xs" style={{ color: SLATE }}>HOURLY RATE</div><div style={{ color: DARK, fontWeight: 700 }}>{fmtMoney(employee.rate, currency)}</div></div>
+        <div className="col-span-2"><div className="mono text-xs" style={{ color: SLATE }}>PAY PERIOD</div><div style={{ color: DARK, fontWeight: 700 }}>{fmtDateFull(rangeStart)} — {fmtDateFull(rangeEnd)}</div></div>
       </div>
       <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
-        <thead><tr style={{ borderBottom: `1px solid ${NAVY}` }}><th className="text-left py-2 text-xs" style={{ color: NAVY }}>Date</th><th className="text-right py-2 text-xs" style={{ color: NAVY }}>Hours</th><th className="text-right py-2 text-xs" style={{ color: NAVY }}>Pay</th></tr></thead>
+        <thead><tr style={{ borderBottom: `1px solid ${DARK}` }}><th className="text-left py-2 text-xs" style={{ color: DARK }}>Date</th><th className="text-right py-2 text-xs" style={{ color: DARK }}>Hours</th><th className="text-right py-2 text-xs" style={{ color: DARK }}>Pay</th></tr></thead>
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={3} className="py-4 text-center text-sm" style={{ color: SLATE }}>No hours logged.</td></tr>
           ) : rows.map((r) => (
             <React.Fragment key={r.date}>
               <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                <td className="mono py-2 text-xs" style={{ color: NAVY }}>{fmtDateWeekday(r.date)}</td>
-                <td className="mono text-right py-2" style={{ color: NAVY }}>{r.hours || "–"}</td>
-                <td className="mono text-right py-2" style={{ color: NAVY }}>{r.hours ? fmtMoney(r.hours * employee.rate, currency) : "–"}</td>
+                <td className="mono py-2 text-xs" style={{ color: DARK }}>{fmtDateWeekday(r.date)}</td>
+                <td className="mono text-right py-2" style={{ color: DARK }}>{r.hours || "–"}</td>
+                <td className="mono text-right py-2" style={{ color: DARK }}>{r.hours ? fmtMoney(r.hours * employee.rate, currency) : "–"}</td>
               </tr>
               {r.note && <tr style={{ borderBottom: `1px solid ${BORDER}` }}><td colSpan={3} className="pb-2 text-xs italic" style={{ color: SLATE }}>{r.note}</td></tr>}
             </React.Fragment>
@@ -1883,11 +1898,11 @@ function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings }) {
             {calc.overtimeHours > 0 && <div className="flex justify-between mono text-xs" style={{ color: SLATE }}><span>Overtime ({calc.overtimeHours.toFixed(2)}h @ {settings.overtime.multiplier}x)</span><span>{fmtMoney(calc.overtimeHours * employee.rate * settings.overtime.multiplier, currency)}</span></div>}
           </>
         )}
-        <div className="flex justify-between mono text-sm pt-1" style={{ color: NAVY, fontWeight: 700, borderTop: `1px solid ${BORDER}` }}><span>Gross Pay</span><span>{fmtMoney(calc.gross, currency)}</span></div>
+        <div className="flex justify-between mono text-sm pt-1" style={{ color: DARK, fontWeight: 700, borderTop: `1px solid ${BORDER}` }}><span>Gross Pay</span><span>{fmtMoney(calc.gross, currency)}</span></div>
         {calc.deductionLines.map((d, i) => (
           <div key={i} className="flex justify-between mono text-xs" style={{ color: RED }}><span>− {d.label}</span><span>−{fmtMoney(d.amount, currency)}</span></div>
         ))}
-        <div className="flex justify-between mono text-base pt-2" style={{ color: ROYAL, fontWeight: 800, borderTop: `2px solid ${NAVY}` }}><span>Net Pay</span><span>{fmtMoney(calc.net, currency)}</span></div>
+        <div className="flex justify-between mono text-base pt-2" style={{ color: ROYAL, fontWeight: 800, borderTop: `2px solid ${DARK}` }}><span>Net Pay</span><span>{fmtMoney(calc.net, currency)}</span></div>
       </div>
       <div className="mono text-xs text-center pt-4" style={{ color: SLATE, borderTop: `1px solid ${BORDER}` }}>Powered by Barkat Home Creations LTD.</div>
     </div>
@@ -1902,7 +1917,7 @@ function PayslipModal({ employee, rangeStart, rangeEnd, days, gridHours, dayNote
     <div className="fixed inset-0 flex items-start sm:items-center justify-center p-0 sm:p-5 overflow-y-auto" style={{ background: "rgba(11,30,61,0.55)", zIndex: 50 }}>
       <div className="w-full sm:max-w-lg sm:rounded-2xl my-0 sm:my-8" style={{ background: "white" }}>
         <div className="no-print flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-          <div className="text-sm" style={{ color: NAVY, fontWeight: 700 }}>Payslip Preview</div>
+          <div className="text-sm" style={{ color: DARK, fontWeight: 700 }}>Payslip Preview</div>
           <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
         </div>
         <div className="print-area">
@@ -1923,7 +1938,7 @@ function BulkPayslipModal({ employees, rangeStart, rangeEnd, days, gridHours, da
     <div className="fixed inset-0 flex items-start justify-center p-0 sm:p-5 overflow-y-auto" style={{ background: "rgba(11,30,61,0.55)", zIndex: 50 }}>
       <div className="w-full sm:max-w-lg sm:rounded-2xl my-0 sm:my-8" style={{ background: "white" }}>
         <div className="no-print flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-          <div className="text-sm" style={{ color: NAVY, fontWeight: 700 }}>All Payslips ({withHours.length})</div>
+          <div className="text-sm" style={{ color: DARK, fontWeight: 700 }}>All Payslips ({withHours.length})</div>
           <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
         </div>
         <div className="print-area">
@@ -2071,7 +2086,7 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
         </div>
 
         {workspace && (
-          <div className="rounded-lg p-4 mb-4" style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})` }}>
+          <div className="rounded-lg p-4 mb-4" style={{ background: `linear-gradient(135deg, ${DARK}, ${DARK2})` }}>
             <div className="text-xs" style={{ color: "#9FB3D9", fontWeight: 600 }}>{workspace.name}</div>
             <div className="text-xs mt-1 mb-2" style={{ color: "#C9D3E6" }}>Share this code with your crew so they can join:</div>
             <div className="flex items-center justify-between">
@@ -2084,7 +2099,7 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
         )}
 
         <Section title="Notifications">
-          <button onClick={toggleEmployerPush} disabled={pushBusy} className="w-full text-left text-sm px-4 py-3 rounded-lg flex items-center justify-between" style={{ background: pushOn ? "#EAF0FE" : BG, color: NAVY, fontWeight: 600 }}>
+          <button onClick={toggleEmployerPush} disabled={pushBusy} className="w-full text-left text-sm px-4 py-3 rounded-lg flex items-center justify-between" style={{ background: pushOn ? "rgba(255,107,26,0.15)" : BG, color: NAVY, fontWeight: 600 }}>
             <span>Push notifications (hours logged, unusual hours)</span>
             <span style={{ color: pushOn ? ROYAL : SLATE, fontWeight: 700 }}>{pushBusy ? "…" : pushOn ? "On" : "Off"}</span>
           </button>
