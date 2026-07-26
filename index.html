@@ -907,14 +907,15 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
   const [bulkPayslip, setBulkPayslip] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [detailEmpId, setDetailEmpId] = useState(null);
 
   const [siteName, setSiteName] = useState("");
   const [siteAddress, setSiteAddress] = useState("");
   const [logSiteId, setLogSiteId] = useState("");
 
   useEffect(() => {
-    modalOpenRef.current = !!(noteCell || payslipEmp || bulkPayslip || settingsOpen || contactOpen);
-  }, [noteCell, payslipEmp, bulkPayslip, settingsOpen, contactOpen]);
+    modalOpenRef.current = !!(noteCell || payslipEmp || bulkPayslip || settingsOpen || contactOpen || detailEmpId);
+  }, [noteCell, payslipEmp, bulkPayslip, settingsOpen, contactOpen, detailEmpId]);
 
   function addSite() {
     if (!siteName.trim()) return;
@@ -1116,14 +1117,16 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
                       </div>
                     ) : (
                       <>
-                        <div>
+                        <div onClick={() => setDetailEmpId(e.id)} className="cursor-pointer" style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, color: NAVY }}>{e.name}</div>
                           <div className="mono text-xs flex items-center gap-2" style={{ color: SLATE }}>
                             {fmtMoney(e.rate)}/hr
                             {e.pin ? <span style={{ color: GREEN }}>· PIN set</span> : <span style={{ color: SLATE }}>· No PIN yet</span>}
+                            {e.hireDate && <span>· Since {fmtDate(e.hireDate)}</span>}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
+                          <button onClick={() => setDetailEmpId(e.id)} className="text-xs" style={{ color: ROYAL, fontWeight: 700 }}>Details</button>
                           <button onClick={() => startEditEmp(e)} style={{ color: ROYAL }}><EditIcon size={15} /></button>
                           {e.pin && <button onClick={() => resetEmpPin(e.id)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Reset PIN</button>}
                           <button onClick={() => removeEmployee(e.id)} className="text-xs" style={{ color: RED, fontWeight: 600 }}>Remove</button>
@@ -1413,6 +1416,15 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
         />
       )}
       {contactOpen && <ContactUsModal onClose={() => setContactOpen(false)} />}
+      {detailEmpId && (
+        <CrewDetailModal
+          employee={employees.find((e) => e.id === detailEmpId)}
+          myEntries={entries.filter((t) => t.employeeId === detailEmpId).sort((a, b) => (a.date < b.date ? 1 : -1))}
+          jobSites={jobSites}
+          onSave={(patch) => saveEmployeesLocal(employees.map((e) => (e.id === detailEmpId ? { ...e, ...patch } : e)))}
+          onClose={() => setDetailEmpId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1764,6 +1776,117 @@ function NoteModal({ employee, date, hours, existing, onSave, onClose }) {
         <div className="flex gap-2">
           <button onClick={() => onSave(text)} className="text-sm px-4 py-2.5 rounded-lg flex-1 text-white" style={{ background: ROYAL, fontWeight: 700 }}>Save</button>
           <button onClick={onClose} className="text-sm px-4 py-2.5 rounded-lg" style={{ background: BG, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailField({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div className="mb-3">
+      <div className="mono text-xs mb-1" style={{ color: SLATE, fontWeight: 600, letterSpacing: "0.05em" }}>{label.toUpperCase()}</div>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
+    </div>
+  );
+}
+
+function CrewDetailModal({ employee, myEntries, jobSites, onSave, onClose }) {
+  if (!employee) return null;
+  const [phone, setPhone] = useState(employee.phone || "");
+  const [email, setEmail] = useState(employee.email || "");
+  const [hireDate, setHireDate] = useState(employee.hireDate || "");
+  const [certifications, setCertifications] = useState(employee.certifications || "");
+  const [notes, setNotes] = useState(employee.notes || "");
+  const [editing, setEditing] = useState(false);
+
+  function save() {
+    onSave({ phone: phone.trim(), email: email.trim(), hireDate, certifications: certifications.trim(), notes: notes.trim() });
+    setEditing(false);
+  }
+
+  const last7 = myEntries.slice(0, 7);
+  const totalHours = myEntries.reduce((s, t) => s + t.hours, 0);
+
+  return (
+    <div className="no-print fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-5" style={{ background: "rgba(0,0,0,0.6)", zIndex: 50 }} onClick={onClose}>
+      <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden" style={{ background: CARD, maxHeight: "88vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        <div className="stripe-divider" />
+        <div className="px-5 pt-4 pb-3 flex items-start justify-between" style={{ borderBottom: `1px solid ${BORDER}` }}>
+          <div>
+            <div className="brand text-xl" style={{ color: NAVY, fontWeight: 800 }}>{employee.name}</div>
+            <div className="mono text-xs mt-1" style={{ color: SLATE }}>
+              {fmtMoney(employee.rate)}/hr {employee.pin ? <span style={{ color: GREEN }}>· PIN set</span> : <span>· No PIN yet</span>}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
+        </div>
+
+        <div className="overflow-y-auto px-5 py-4" style={{ flex: 1 }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="brand text-sm" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>DETAILS</div>
+            {!editing && <button onClick={() => setEditing(true)} className="text-xs" style={{ color: ROYAL, fontWeight: 700 }}>Edit</button>}
+          </div>
+
+          {editing ? (
+            <>
+              <DetailField label="Phone" value={phone} onChange={setPhone} placeholder="e.g. (555) 123-4567" />
+              <DetailField label="Email" value={email} onChange={setEmail} placeholder="e.g. name@email.com" />
+              <DetailField label="Hire Date" value={hireDate} onChange={setHireDate} type="date" />
+              <DetailField label="Certifications" value={certifications} onChange={setCertifications} placeholder="e.g. WHMIS, Fall Protection" />
+              <div className="mb-3">
+                <div className="mono text-xs mb-1" style={{ color: SLATE, fontWeight: 600, letterSpacing: "0.05em" }}>NOTES</div>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Private notes — only visible to you" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button onClick={save} className="flex-1 text-sm px-4 py-2.5 rounded-lg text-white" style={{ background: ROYAL, fontWeight: 700 }}>Save</button>
+                <button onClick={() => setEditing(false)} className="text-sm px-4 py-2.5 rounded-lg" style={{ background: BG, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Cancel</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Row>
+                <div className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Phone</div>
+                <div className="mono text-sm" style={{ color: NAVY }}>{employee.phone || "—"}</div>
+              </Row>
+              <Row>
+                <div className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Email</div>
+                <div className="mono text-sm" style={{ color: NAVY }}>{employee.email || "—"}</div>
+              </Row>
+              <Row>
+                <div className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Hire Date</div>
+                <div className="mono text-sm" style={{ color: NAVY }}>{employee.hireDate ? fmtDate(employee.hireDate) : "—"}</div>
+              </Row>
+              <Row>
+                <div className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Certifications</div>
+                <div className="text-sm text-right" style={{ color: NAVY, maxWidth: "60%" }}>{employee.certifications || "—"}</div>
+              </Row>
+              {employee.notes && (
+                <div className="p-3 rounded-lg mt-2 mb-2 text-sm" style={{ background: BG, color: NAVY, border: `1px solid ${BORDER}` }}>
+                  {employee.notes}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="brand text-sm mt-5 mb-3" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>RECENT ACTIVITY</div>
+          <div className="mono text-xs mb-2" style={{ color: SLATE }}>{totalHours.toFixed(1)}h logged all-time</div>
+          {last7.length === 0 ? (
+            <div className="text-xs" style={{ color: SLATE }}>No hours logged yet.</div>
+          ) : (
+            last7.map((t) => {
+              const site = jobSites.find((s) => s.id === t.siteId);
+              return (
+                <Row key={t.id}>
+                  <div>
+                    <div className="mono text-xs" style={{ color: NAVY }}>{fmtDate(t.date)}</div>
+                    {site && <div className="text-xs mt-0.5" style={{ color: SLATE }}>{site.name}</div>}
+                  </div>
+                  <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{t.hours}h</div>
+                </Row>
+              );
+            })
+          )}
         </div>
       </div>
     </div>
