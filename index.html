@@ -296,6 +296,7 @@ function App() {
   const [deletedLog, setDeletedLog] = useState([]);
   const [employerPin, setEmployerPin] = useState(null);
   const [jobSites, setJobSites] = useState([]);
+  const [activeShifts, setActiveShifts] = useState({});
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
 
   const [role, setRole] = useState(() => localStorage.getItem("wp_role") || null);
@@ -345,6 +346,7 @@ function App() {
       setDeletedLog(map.deletedLog || []);
       setEmployerPin(map.employerPin ?? null);
       setJobSites(map.jobSites || []);
+      setActiveShifts(map.activeShifts || {});
       setSettings({ ...DEFAULT_SETTINGS, ...(map.settings || {}) });
     } catch (e) {
       setError("Couldn't connect to the shared database. Check your connection.");
@@ -458,7 +460,7 @@ function App() {
         ) : (
           <EmployerApp
             employees={employees} entries={entries} dayNotes={dayNotes} paidRanges={paidRanges} deletedLog={deletedLog} employerPin={employerPin} workspace={workspace}
-            jobSites={jobSites} settings={settings}
+            jobSites={jobSites} settings={settings} activeShifts={activeShifts} setActiveShifts={setActiveShifts}
             persist={persist} switchUser={switchUser} modalOpenRef={modalOpenRef} saving={saving}
           />
         )
@@ -491,7 +493,7 @@ function App() {
             }
             return (
               <EmployeeApp
-                me={me} entries={entries} dayNotes={dayNotes} jobSites={jobSites} settings={settings} workspaceId={activeWorkspaceId}
+                me={me} entries={entries} dayNotes={dayNotes} jobSites={jobSites} settings={settings} workspaceId={activeWorkspaceId} activeShifts={activeShifts} setActiveShifts={setActiveShifts}
                 persist={persist} allEntries={entries} switchUser={switchUser}
               />
             );
@@ -882,7 +884,7 @@ function EmployeePicker({ employees, companyName, onPick, onBack }) {
 
 /* ================= EMPLOYER APP ================= */
 
-function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, workspace, jobSites, settings, persist, switchUser, modalOpenRef, saving }) {
+function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, workspace, jobSites, settings, persist, switchUser, modalOpenRef, saving, activeShifts, setActiveShifts }) {
   const [tab, setTab] = useState("log");
   const [empSearch, setEmpSearch] = useState("");
   const [logSearch, setLogSearch] = useState("");
@@ -908,14 +910,15 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [detailEmpId, setDetailEmpId] = useState(null);
+  const [detailSiteId, setDetailSiteId] = useState(null);
 
   const [siteName, setSiteName] = useState("");
   const [siteAddress, setSiteAddress] = useState("");
   const [logSiteId, setLogSiteId] = useState("");
 
   useEffect(() => {
-    modalOpenRef.current = !!(noteCell || payslipEmp || bulkPayslip || settingsOpen || contactOpen || detailEmpId);
-  }, [noteCell, payslipEmp, bulkPayslip, settingsOpen, contactOpen, detailEmpId]);
+    modalOpenRef.current = !!(noteCell || payslipEmp || bulkPayslip || settingsOpen || contactOpen || detailEmpId || detailSiteId);
+  }, [noteCell, payslipEmp, bulkPayslip, settingsOpen, contactOpen, detailEmpId, detailSiteId]);
 
   function addSite() {
     if (!siteName.trim()) return;
@@ -924,6 +927,19 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
   }
   function removeSite(id) {
     persist("jobSites", jobSites.filter((s) => s.id !== id), () => {});
+  }
+  function saveSitesLocal(next) { persist("jobSites", next, () => {}); }
+  function siteSpend(siteId) {
+    return entries.filter((t) => t.siteId === siteId).reduce((sum, t) => {
+      const emp = employees.find((e) => e.id === t.employeeId);
+      return sum + (emp ? t.hours * emp.rate : 0);
+    }, 0);
+  }
+  function siteHours(siteId) {
+    return entries.filter((t) => t.siteId === siteId).reduce((s, t) => s + t.hours, 0);
+  }
+  function siteCrewIds(siteId) {
+    return [...new Set(entries.filter((t) => t.siteId === siteId).map((t) => t.employeeId))];
   }
 
   function addEmployee() {
@@ -1142,6 +1158,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
 
         {tab === "log" && (
           <div>
+            <DashboardOverview employees={employees} entries={entries} jobSites={jobSites} activeShifts={activeShifts} settings={settings} />
             <Card icon={ClockIcon} title="Log Hours">
               {employees.length === 0 ? <div className="text-sm" style={{ color: SLATE }}>Add crew members first.</div> : (
                 <div>
@@ -1220,15 +1237,41 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
             </Card>
             {jobSites.length === 0 ? <Empty text="No job sites yet." /> : (
               <div className="space-y-2">
-                {jobSites.map((s) => (
-                  <Row key={s.id}>
-                    <div>
-                      <div style={{ fontWeight: 600, color: NAVY }}>{s.name}</div>
-                      {s.address && <div className="text-xs" style={{ color: SLATE }}>{s.address}</div>}
+                {jobSites.map((s) => {
+                  const spend = siteSpend(s.id);
+                  const budget = Number(s.budget) || 0;
+                  const pct = budget > 0 ? Math.min(100, Math.round((spend / budget) * 100)) : null;
+                  const phase = Number(s.progress) || 0;
+                  return (
+                    <div key={s.id} className="p-4 rounded-xl mb-2 shadow-sm relative overflow-hidden cursor-pointer" style={{ background: CARD, border: `1px solid ${BORDER}` }} onClick={() => setDetailSiteId(s.id)}>
+                      <div style={{ position: "absolute", top: 0, left: 0, width: 4, height: "100%", background: ROYAL }} />
+                      <div className="flex items-center justify-between" style={{ paddingLeft: 6 }}>
+                        <div>
+                          <div style={{ fontWeight: 600, color: NAVY }}>{s.name}</div>
+                          {s.address && <div className="text-xs" style={{ color: SLATE }}>{s.address}</div>}
+                        </div>
+                        <button onClick={(ev) => { ev.stopPropagation(); removeSite(s.id); }} className="text-xs" style={{ color: RED, fontWeight: 600 }}>Remove</button>
+                      </div>
+                      {(budget > 0 || phase > 0) && (
+                        <div style={{ paddingLeft: 6, marginTop: 10 }}>
+                          {phase > 0 && (
+                            <div className="mb-2">
+                              <div className="flex justify-between mono text-xs mb-1" style={{ color: SLATE, fontWeight: 700 }}><span>PROGRESS</span><span>{phase}%</span></div>
+                              <div className="rounded" style={{ height: 6, background: BG, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: phase + "%", background: ROYAL }} />
+                              </div>
+                            </div>
+                          )}
+                          {budget > 0 && (
+                            <div className="mono text-xs" style={{ color: pct >= 100 ? RED : SLATE }}>
+                              {fmtMoney(spend)} of {fmtMoney(budget)} labor budget spent ({pct}%)
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <button onClick={() => removeSite(s.id)} className="text-xs" style={{ color: RED, fontWeight: 600 }}>Remove</button>
-                  </Row>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1425,6 +1468,16 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
           onClose={() => setDetailEmpId(null)}
         />
       )}
+      {detailSiteId && (
+        <SiteDetailModal
+          site={jobSites.find((s) => s.id === detailSiteId)}
+          spend={siteSpend(detailSiteId)}
+          hours={siteHours(detailSiteId)}
+          crew={siteCrewIds(detailSiteId).map((id) => employees.find((e) => e.id === id)).filter(Boolean)}
+          onSave={(patch) => saveSitesLocal(jobSites.map((s) => (s.id === detailSiteId ? { ...s, ...patch } : s)))}
+          onClose={() => setDetailSiteId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1442,7 +1495,7 @@ function minutesBetween(start, end) {
   return mins;
 }
 
-function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, persist, allEntries, switchUser }) {
+function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, persist, allEntries, switchUser, activeShifts, setActiveShifts }) {
   const [tab, setTab] = useState("log");
   const [logDate, setLogDate] = useState(todayStr());
   const [startTime, setStartTime] = useState("");
@@ -1456,6 +1509,40 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
   const [remindMe, setRemindMe] = useState(() => localStorage.getItem("la_remind_" + me.id) === "1");
   const [pushOn, setPushOn] = useState(() => localStorage.getItem("la_push_" + me.id) === "1");
   const [pushBusy, setPushBusy] = useState(false);
+  const [clockSiteId, setClockSiteId] = useState("");
+  const [nowTick, setNowTick] = useState(Date.now());
+
+  const myShift = activeShifts && activeShifts[me.id];
+
+  useEffect(() => {
+    if (!myShift) return;
+    const iv = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, [myShift]);
+
+  function startShift() {
+    haptic(15);
+    const next = { ...(activeShifts || {}), [me.id]: { startedAt: new Date().toISOString(), siteId: clockSiteId || null } };
+    persist("activeShifts", next, setActiveShifts);
+  }
+  function endShift() {
+    if (!myShift) return;
+    haptic(20);
+    const startedAt = new Date(myShift.startedAt);
+    const hoursRaw = (Date.now() - startedAt.getTime()) / 3600000;
+    const hours = roundToHalfHour(hoursRaw);
+    const entry = { id: uid(), employeeId: me.id, date: todayStr(), hours: Math.max(hours, 0.5), siteId: myShift.siteId || null, startTime: startedAt.toTimeString().slice(0, 5), endTime: new Date().toTimeString().slice(0, 5) };
+    persist("entries", [...allEntries, entry], () => {});
+    const next = { ...(activeShifts || {}) };
+    delete next[me.id];
+    persist("activeShifts", next, setActiveShifts);
+    if (workspaceId) notifyEmployer(workspaceId, "Shift ended", `${me.name} clocked out after ${entry.hours}h.`);
+  }
+  const liveElapsedSec = myShift ? Math.max(0, Math.floor((nowTick - new Date(myShift.startedAt).getTime()) / 1000)) : 0;
+  const liveHrs = Math.floor(liveElapsedSec / 3600);
+  const liveMin = Math.floor((liveElapsedSec % 3600) / 60);
+  const liveSec = liveElapsedSec % 60;
+  const liveSiteName = myShift && myShift.siteId ? (jobSites.find((s) => s.id === myShift.siteId) || {}).name : null;
 
   const myEntries = useMemo(() => allEntries.filter((t) => t.employeeId === me.id).sort((a, b) => (a.date < b.date ? 1 : -1)), [allEntries, me.id]);
 
@@ -1555,6 +1642,35 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
       <div className="max-w-4xl mx-auto px-5 py-6 no-print w-full flex-1">
         {tab === "log" && (
           <div>
+            <div className="p-5 rounded-xl mb-4 shadow-sm relative overflow-hidden" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+              <div style={{ position: "absolute", top: 0, left: 0, width: 4, height: "100%", background: myShift ? GREEN : ROYAL }} />
+              <div style={{ paddingLeft: 6 }}>
+                {myShift ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: GREEN, display: "inline-block" }} />
+                      <span className="brand text-sm" style={{ color: GREEN, fontWeight: 700, letterSpacing: "0.05em" }}>ON THE CLOCK{liveSiteName ? " · " + liveSiteName : ""}</span>
+                    </div>
+                    <div className="brand mono" style={{ color: NAVY, fontSize: 44, fontWeight: 800, letterSpacing: "0.02em" }}>
+                      {String(liveHrs).padStart(2, "0")}:{String(liveMin).padStart(2, "0")}:{String(liveSec).padStart(2, "0")}
+                    </div>
+                    <button onClick={endShift} className="w-full text-sm px-4 py-3 rounded-lg text-white mt-3" style={{ background: RED, fontWeight: 800 }}>Clock Out</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="brand text-sm mb-3" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.05em" }}>CLOCK IN</div>
+                    {jobSites.length > 0 && (
+                      <select value={clockSiteId} onChange={(e) => setClockSiteId(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ borderColor: BORDER, background: BG, color: NAVY }}>
+                        <option value="">No job site selected</option>
+                        {jobSites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    )}
+                    <button onClick={startShift} className="w-full text-sm px-4 py-3 rounded-lg text-white" style={{ background: ROYAL, fontWeight: 800 }}>Start Shift</button>
+                  </>
+                )}
+              </div>
+            </div>
+
             <button onClick={togglePush} disabled={pushBusy} className="w-full text-left text-xs px-3 py-2 rounded-lg mb-2 flex items-center justify-between" style={{ background: pushOn ? "rgba(255,107,26,0.15)" : BG, color: NAVY, border: `1px solid ${BORDER}` }}>
               <span style={{ fontWeight: 600 }}>Push notifications (payroll updates)</span>
               <span style={{ color: pushOn ? ROYAL : SLATE, fontWeight: 700 }}>{pushBusy ? "…" : pushOn ? "On" : "Off"}</span>
@@ -1563,28 +1679,28 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
               <span style={{ fontWeight: 600 }}>Remind me to log hours today</span>
               <span style={{ color: remindMe ? ROYAL : SLATE, fontWeight: 700 }}>{remindMe ? "On" : "Off"}</span>
             </button>
-            <Card icon={ClockIcon} title="Log Today's Hours">
-              <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mono mb-2" style={{ borderColor: BORDER }} />
+            <Card icon={ClockIcon} title="Log Past Hours">
+              <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mono mb-2" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
               <div className="flex gap-2 mb-2">
                 <div className="flex-1">
                   <div className="text-xs mb-1" style={{ color: SLATE }}>Start time</div>
-                  <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                  <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
                 </div>
                 <div className="flex-1">
                   <div className="text-xs mb-1" style={{ color: SLATE }}>End time</div>
-                  <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                  <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
                 </div>
               </div>
               {computedHours > 0 && (
                 <div className="text-xs mb-2 mono" style={{ color: ROYAL, fontWeight: 700 }}>{computedHours}h (rounded to nearest 30 min)</div>
               )}
               {jobSites.length > 0 && (
-                <select value={logSiteId} onChange={(e) => setLogSiteId(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER }}>
+                <select value={logSiteId} onChange={(e) => setLogSiteId(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER, background: BG, color: NAVY }}>
                   <option value="">No job site selected</option>
                   {jobSites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               )}
-              <input value={logNote} onChange={(e) => setLogNote(e.target.value)} placeholder="Note (optional) — e.g. task…" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ borderColor: BORDER }} />
+              <input value={logNote} onChange={(e) => setLogNote(e.target.value)} placeholder="Note (optional) — e.g. task…" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
               <button onClick={addEntry} disabled={computedHours <= 0} className="w-full text-sm px-4 py-2.5 rounded-lg text-white" style={{ background: computedHours <= 0 ? SLATE : ROYAL, fontWeight: 700 }}>
                 Submit Hours
               </button>
@@ -1610,6 +1726,7 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
         {tab === "pay" && (
           <div>
             <DateRangeBar rangeStart={rangeStart} rangeEnd={rangeEnd} setRangeStart={setRangeStart} setRangeEnd={setRangeEnd} setPreset={setPreset} settings={settings} />
+            <HoursRingCard weekHours={days.reduce((s, d) => s + (gridHours[me.id + "|" + d] || 0), 0)} target={40} />
             <div className="rounded-xl p-5 shadow-sm mb-4" style={{ background: `linear-gradient(135deg, ${DARK}, ${DARK2})`, color: "white" }}>
               <div className="text-xs" style={{ color: "#9FB3D9", fontWeight: 600 }}>Your Net Pay — {rangeStart} to {rangeEnd}</div>
               <div className="mono text-3xl mt-1" style={{ color: ROYAL_L, fontWeight: 700 }}>{fmtMoney(calc.net, settings.currency)}</div>
@@ -1890,6 +2007,218 @@ function CrewDetailModal({ employee, myEntries, jobSites, onSave, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function SiteDetailModal({ site, spend, hours, crew, onSave, onClose }) {
+  if (!site) return null;
+  const [budget, setBudget] = useState(site.budget || "");
+  const [progress, setProgress] = useState(site.progress || 0);
+  const [phaseLabel, setPhaseLabel] = useState(site.phaseLabel || "");
+  const [editing, setEditing] = useState(false);
+
+  function save() {
+    onSave({ budget: budget ? Number(budget) : "", progress: Number(progress) || 0, phaseLabel: phaseLabel.trim() });
+    setEditing(false);
+  }
+
+  const budgetNum = Number(site.budget) || 0;
+  const pct = budgetNum > 0 ? Math.min(100, Math.round((spend / budgetNum) * 100)) : null;
+
+  return (
+    <div className="no-print fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-5" style={{ background: "rgba(0,0,0,0.6)", zIndex: 50 }} onClick={onClose}>
+      <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden" style={{ background: CARD, maxHeight: "88vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        <div className="stripe-divider" />
+        <div className="px-5 pt-4 pb-3 flex items-start justify-between" style={{ borderBottom: `1px solid ${BORDER}` }}>
+          <div>
+            <div className="brand text-xl" style={{ color: NAVY, fontWeight: 800 }}>{site.name}</div>
+            {site.address && <div className="text-xs mt-1" style={{ color: SLATE }}>{site.address}</div>}
+          </div>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
+        </div>
+
+        <div className="overflow-y-auto px-5 py-4" style={{ flex: 1 }}>
+          <div className="flex gap-2 mb-4">
+            <div className="flex-1 p-3 rounded-lg text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <div className="brand text-2xl" style={{ color: NAVY, fontWeight: 800 }}>{hours.toFixed(1)}</div>
+              <div className="mono text-xs" style={{ color: SLATE }}>HOURS LOGGED</div>
+            </div>
+            <div className="flex-1 p-3 rounded-lg text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <div className="brand text-2xl" style={{ color: ROYAL, fontWeight: 800 }}>{fmtMoney(spend)}</div>
+              <div className="mono text-xs" style={{ color: SLATE }}>LABOR SPEND</div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <div className="brand text-sm" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>BUDGET & PROGRESS</div>
+            {!editing && <button onClick={() => setEditing(true)} className="text-xs" style={{ color: ROYAL, fontWeight: 700 }}>Edit</button>}
+          </div>
+
+          {editing ? (
+            <>
+              <DetailField label="Labor Budget" value={budget} onChange={setBudget} placeholder="e.g. 25000" type="number" />
+              <DetailField label="Current Phase" value={phaseLabel} onChange={setPhaseLabel} placeholder="e.g. Framing" />
+              <div className="mb-4">
+                <div className="mono text-xs mb-1" style={{ color: SLATE, fontWeight: 600, letterSpacing: "0.05em" }}>PROGRESS ({progress}%)</div>
+                <input type="range" min="0" max="100" value={progress} onChange={(e) => setProgress(e.target.value)} className="w-full" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={save} className="flex-1 text-sm px-4 py-2.5 rounded-lg text-white" style={{ background: ROYAL, fontWeight: 700 }}>Save</button>
+                <button onClick={() => setEditing(false)} className="text-sm px-4 py-2.5 rounded-lg" style={{ background: BG, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Cancel</button>
+              </div>
+            </>
+          ) : (
+            <>
+              {site.phaseLabel && (
+                <Row>
+                  <div className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Current Phase</div>
+                  <div className="text-sm" style={{ color: NAVY, fontWeight: 700 }}>{site.phaseLabel}</div>
+                </Row>
+              )}
+              <div className="mb-2 mt-1">
+                <div className="flex justify-between mono text-xs mb-1" style={{ color: SLATE, fontWeight: 700 }}><span>PROGRESS</span><span>{Number(site.progress) || 0}%</span></div>
+                <div className="rounded" style={{ height: 8, background: BG, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: (Number(site.progress) || 0) + "%", background: ROYAL }} />
+                </div>
+              </div>
+              {budgetNum > 0 ? (
+                <div className="mono text-xs mt-2" style={{ color: pct >= 100 ? RED : SLATE }}>
+                  {fmtMoney(spend)} of {fmtMoney(budgetNum)} labor budget spent ({pct}%)
+                </div>
+              ) : (
+                <div className="text-xs mt-2" style={{ color: SLATE }}>No budget set yet — tap Edit to add one.</div>
+              )}
+            </>
+          )}
+
+          <div className="brand text-sm mt-5 mb-3" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>CREW ON THIS SITE</div>
+          {crew.length === 0 ? (
+            <div className="text-xs" style={{ color: SLATE }}>No one has logged hours here yet.</div>
+          ) : (
+            crew.map((c) => (
+              <Row key={c.id}>
+                <div style={{ color: NAVY, fontWeight: 600 }}>{c.name}</div>
+                <div className="mono text-xs" style={{ color: SLATE }}>{fmtMoney(c.rate)}/hr</div>
+              </Row>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HoursRingCard({ weekHours, target }) {
+  const pct = Math.min(100, Math.round((weekHours / target) * 100));
+  const r = 42, circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <div className="p-5 rounded-xl mb-4 shadow-sm flex items-center gap-5 relative overflow-hidden" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+      <div style={{ position: "absolute", top: 0, left: 0, width: 4, height: "100%", background: ROYAL }} />
+      <svg width="100" height="100" viewBox="0 0 100 100" style={{ marginLeft: 6, flexShrink: 0 }}>
+        <circle cx="50" cy="50" r={r} fill="none" stroke={BORDER} strokeWidth="8" />
+        <circle cx="50" cy="50" r={r} fill="none" stroke={ROYAL} strokeWidth="8" strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" transform="rotate(-90 50 50)" />
+        <text x="50" y="47" textAnchor="middle" fontSize="20" fontWeight="800" fill={NAVY} fontFamily="'IBM Plex Mono', monospace">{weekHours.toFixed(1)}</text>
+        <text x="50" y="63" textAnchor="middle" fontSize="9" fill={SLATE} fontFamily="'IBM Plex Mono', monospace">of {target}h</text>
+      </svg>
+      <div>
+        <div className="brand text-sm" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.03em" }}>THIS PERIOD</div>
+        <div className="mono text-xs mt-1" style={{ color: SLATE }}>{pct}% of your {target}h target</div>
+        {weekHours > target && <div className="mono text-xs mt-1" style={{ color: ROYAL, fontWeight: 700 }}>{(weekHours - target).toFixed(1)}h over target</div>}
+      </div>
+    </div>
+  );
+}
+
+function DashboardOverview({ employees, entries, jobSites, activeShifts, settings }) {
+  const monday = getMonday(todayStr());
+  const weekDays = useMemo(() => dateRange(monday, todayStr()), [monday]);
+
+  const weekHoursByEmp = useMemo(() => {
+    const map = {};
+    for (const t of entries) {
+      if (t.date < monday) continue;
+      map[t.employeeId] = (map[t.employeeId] || 0) + t.hours;
+    }
+    return map;
+  }, [entries, monday]);
+
+  const overtimeThreshold = settings && settings.overtime && settings.overtime.enabled && settings.overtime.threshold === "weekly" ? 40 : 40;
+  const overWorkers = employees.filter((e) => (weekHoursByEmp[e.id] || 0) > overtimeThreshold);
+  const noHoursWorkers = employees.filter((e) => !(weekHoursByEmp[e.id] > 0));
+
+  const activeList = employees.filter((e) => activeShifts && activeShifts[e.id]);
+
+  const recent = useMemo(() => [...entries].slice(-8).reverse(), [entries]);
+
+  const hasAlerts = overWorkers.length > 0 || (noHoursWorkers.length > 0 && employees.length > 0);
+
+  if (employees.length === 0) return null;
+
+  return (
+    <>
+      {activeList.length > 0 && (
+        <div className="p-4 rounded-xl mb-4 shadow-sm relative overflow-hidden" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+          <div style={{ position: "absolute", top: 0, left: 0, width: 4, height: "100%", background: GREEN }} />
+          <div style={{ paddingLeft: 6 }}>
+            <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.03em" }}>ON THE CLOCK NOW ({activeList.length})</div>
+            {activeList.map((e) => {
+              const shift = activeShifts[e.id];
+              const site = jobSites.find((s) => s.id === shift.siteId);
+              return (
+                <div key={e.id} className="flex items-center justify-between py-1.5">
+                  <div className="flex items-center gap-2">
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, display: "inline-block" }} />
+                    <span className="text-sm" style={{ color: NAVY, fontWeight: 600 }}>{e.name}</span>
+                  </div>
+                  <span className="mono text-xs" style={{ color: SLATE }}>{site ? site.name : "No site"} · since {new Date(shift.startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {hasAlerts && (
+        <div className="p-4 rounded-xl mb-4 shadow-sm relative overflow-hidden" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+          <div style={{ position: "absolute", top: 0, left: 0, width: 4, height: "100%", background: YELLOW }} />
+          <div style={{ paddingLeft: 6 }}>
+            <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.03em" }}>ALERTS</div>
+            {overWorkers.map((e) => (
+              <div key={e.id} className="flex items-center justify-between py-1.5">
+                <span className="text-sm" style={{ color: NAVY }}>{e.name} is over {overtimeThreshold}h this week</span>
+                <span className="mono text-xs" style={{ color: YELLOW, fontWeight: 700 }}>{weekHoursByEmp[e.id].toFixed(1)}h</span>
+              </div>
+            ))}
+            {noHoursWorkers.map((e) => (
+              <div key={e.id} className="flex items-center justify-between py-1.5">
+                <span className="text-sm" style={{ color: NAVY }}>{e.name} has no hours logged this week</span>
+                <span className="mono text-xs" style={{ color: SLATE, fontWeight: 700 }}>0h</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <div className="mb-1">
+          <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.03em" }}>RECENT ACTIVITY</div>
+          {recent.map((t) => {
+            const emp = employees.find((e) => e.id === t.employeeId);
+            const site = jobSites.find((s) => s.id === t.siteId);
+            return (
+              <Row key={t.id}>
+                <div>
+                  <div style={{ color: NAVY, fontWeight: 600 }}>{emp ? emp.name : "Unknown"}</div>
+                  <div className="mono text-xs mt-0.5" style={{ color: SLATE }}>{fmtDate(t.date)}{site ? " · " + site.name : ""}</div>
+                </div>
+                <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{t.hours}h</div>
+              </Row>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
 
