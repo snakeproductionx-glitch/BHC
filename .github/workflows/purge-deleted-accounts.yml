@@ -1,0 +1,18 @@
+name: Purge Deleted Accounts
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+jobs:
+  purge-accounts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deleted-account purge check
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/purge-deleted-accounts" \
+            -X POST \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
