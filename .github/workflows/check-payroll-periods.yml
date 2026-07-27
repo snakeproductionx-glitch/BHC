@@ -1,0 +1,18 @@
+name: Check Payroll Periods
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-payroll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger payroll period check
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/check-payroll-periods" \
+            -X POST \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
