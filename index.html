@@ -316,6 +316,7 @@ function App() {
   const [activeShifts, setActiveShifts] = useState({});
   const [timeOffMarks, setTimeOffMarks] = useState({});
   const [sentPayrollSummaries, setSentPayrollSummaries] = useState([]);
+  const [accountDeletion, setAccountDeletion] = useState(null);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
 
   const [role, setRole] = useState(() => localStorage.getItem("wp_role") || null);
@@ -368,6 +369,7 @@ function App() {
       setActiveShifts(map.activeShifts || {});
       setTimeOffMarks(map.timeOffMarks || {});
       setSentPayrollSummaries(map.sentPayrollSummaries || []);
+      setAccountDeletion(map.accountDeletion || null);
       setSettings({ ...DEFAULT_SETTINGS, ...(map.settings || {}) });
     } catch (e) {
       setError("Couldn't connect to the shared database. Check your connection.");
@@ -460,6 +462,12 @@ function App() {
           <EmployerAuthScreen onBack={() => setRolePersist(null)} />
         ) : !workspace ? (
           <CreateWorkspaceScreen session={session} onCreated={setWorkspace} onBack={() => setRolePersist(null)} />
+        ) : accountDeletion && new Date(accountDeletion.scheduledFor) > new Date() ? (
+          <AccountPendingDeletionScreen
+            scheduledFor={accountDeletion.scheduledFor}
+            onRestore={() => persist("accountDeletion", null, setAccountDeletion)}
+            onLogout={switchUser}
+          />
         ) : !employerPinReady(employerPin, employerUnlocked) ? (
           employerPin === null ? (
             <CreatePin
@@ -483,7 +491,7 @@ function App() {
             employees={employees} entries={entries} dayNotes={dayNotes} paidRanges={paidRanges} deletedLog={deletedLog} employerPin={employerPin} workspace={workspace}
             setEmployees={setEmployees} setEntries={setEntries} setDayNotes={setDayNotes} setPaidRanges={setPaidRanges} setDeletedLog={setDeletedLog} setSettings={setSettings} setEmployerPin={setEmployerPin}
             jobSites={jobSites} settings={settings} activeShifts={activeShifts} setActiveShifts={setActiveShifts} setJobSites={setJobSites} timeOffMarks={timeOffMarks} setTimeOffMarks={setTimeOffMarks}
-            sentPayrollSummaries={sentPayrollSummaries} setSentPayrollSummaries={setSentPayrollSummaries}
+            sentPayrollSummaries={sentPayrollSummaries} setSentPayrollSummaries={setSentPayrollSummaries} setAccountDeletion={setAccountDeletion}
             persist={persist} switchUser={switchUser} modalOpenRef={modalOpenRef} saving={saving}
           />
         )
@@ -547,7 +555,7 @@ function BrandHeader({ right }) {
   return (
     <div className="flex items-center justify-between px-5 pt-6 pb-2 max-w-4xl mx-auto w-full">
       <div className="flex items-center gap-2">
-        <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 34, objectFit: "contain" }} />
+        <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 52, objectFit: "contain" }} />
       </div>
       {right}
     </div>
@@ -568,6 +576,39 @@ function RoleGate({ setRole }) {
           <button onClick={() => setRole("employee")} className="w-full py-4 rounded-2xl brand text-xl" style={{ background: CARD, color: NAVY, border: `2px solid ${BORDER}`, fontWeight: 800, letterSpacing: "0.03em" }}>
             I'm a Crew Member
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountPendingDeletionScreen({ scheduledFor, onRestore, onLogout }) {
+  const [restoring, setRestoring] = useState(false);
+  const daysLeft = Math.max(0, Math.ceil((new Date(scheduledFor) - new Date()) / 86400000));
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <div className="stripe-divider" />
+      <BrandHeader right={<button onClick={onLogout} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Log Out</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+        <div style={{ width: 56, height: 56, borderRadius: 28, background: "rgba(239,83,80,0.15)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <TrashIcon size={24} color={RED} />
+        </div>
+        <div className="brand text-2xl mb-2" style={{ color: NAVY, fontWeight: 800 }}>Account Scheduled for Deletion</div>
+        <div className="text-sm mb-1" style={{ color: SLATE }}>
+          Your account and all data will be permanently erased on
+        </div>
+        <div className="mono text-sm mb-6" style={{ color: RED, fontWeight: 700 }}>{fmtDateFull(scheduledFor.slice(0, 10))} ({daysLeft} day{daysLeft === 1 ? "" : "s"} left)</div>
+        <div className="w-full max-w-xs">
+          <button
+            onClick={async () => { setRestoring(true); await onRestore(); setRestoring(false); }}
+            disabled={restoring}
+            className="w-full py-3.5 rounded-2xl text-white brand text-lg mb-3"
+            style={{ background: ROYAL, fontWeight: 800, letterSpacing: "0.02em" }}
+          >
+            {restoring ? "Restoring…" : "Restore My Account"}
+          </button>
+          <div className="text-xs" style={{ color: SLATE }}>Restoring cancels the deletion and returns everything to normal — nothing has been erased yet.</div>
         </div>
       </div>
     </div>
@@ -905,7 +946,7 @@ function EmployeePicker({ employees, companyName, onPick, onBack }) {
 
 /* ================= EMPLOYER APP ================= */
 
-function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, workspace, jobSites, settings, persist, switchUser, modalOpenRef, saving, activeShifts, setActiveShifts, setEmployees, setEntries, setDayNotes, setPaidRanges, setDeletedLog, setJobSites, setSettings, setEmployerPin, timeOffMarks, setTimeOffMarks, sentPayrollSummaries, setSentPayrollSummaries }) {
+function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, workspace, jobSites, settings, persist, switchUser, modalOpenRef, saving, activeShifts, setActiveShifts, setEmployees, setEntries, setDayNotes, setPaidRanges, setDeletedLog, setJobSites, setSettings, setEmployerPin, timeOffMarks, setTimeOffMarks, sentPayrollSummaries, setSentPayrollSummaries, setAccountDeletion }) {
   const [tab, setTab] = useState("log");
   const [empSearch, setEmpSearch] = useState("");
   const [logSearch, setLogSearch] = useState("");
@@ -1108,7 +1149,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
         <div className="stripe-divider" />
         <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
           <div className="flex items-center justify-between">
-            <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 34, objectFit: "contain" }} />
+            <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 52, objectFit: "contain" }} />
             <div className="flex items-center gap-3">
               {saving && <span className="text-xs" style={{ color: SLATE }}>Saving…</span>}
               <button onClick={() => setReportsOpen(true)} style={{ color: "#C7CBD1" }}><BarChartIcon size={19} /></button>
@@ -1512,6 +1553,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
           onClose={() => setSettingsOpen(false)}
           onLogout={switchUser}
           onContactUs={() => setContactOpen(true)}
+          setAccountDeletion={setAccountDeletion}
         />
       )}
       {contactOpen && <ContactUsModal onClose={() => setContactOpen(false)} />}
@@ -1707,7 +1749,7 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
         <div className="stripe-divider" />
         <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
           <div className="flex items-center justify-between">
-            <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 34, objectFit: "contain" }} />
+            <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 52, objectFit: "contain" }} />
             <div className="flex items-center gap-3">
               <button onClick={() => setContactOpen(true)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Contact Us</button>
               <button onClick={switchUser} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Log Out</button>
@@ -2945,7 +2987,7 @@ function Section({ title, children }) {
   );
 }
 
-function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin, onSaveSettings, onSaveSites, allData, onImport, onClose, onLogout, onContactUs }) {
+function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin, onSaveSettings, onSaveSites, allData, onImport, onClose, onLogout, onContactUs, setAccountDeletion }) {
   const [changing, setChanging] = useState(false);
   const [copied, setCopied] = useState(false);
   const [local, setLocal] = useState(settings);
@@ -2957,26 +2999,37 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
   const [pushBusy, setPushBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteTyped, setDeleteTyped] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   const fileRef = useRef(null);
   const logoRef = useRef(null);
 
   async function handleDeleteAccount() {
-    if (deleteTyped.trim().toUpperCase() !== "DELETE") return;
+    if (deleteTyped.trim().toUpperCase() !== "DELETE" || !deletePassword) return;
     setDeleting(true);
     setDeleteErr("");
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+      const { data: userData } = await sb.auth.getUser();
+      const email = userData && userData.user && userData.user.email;
+      if (!email) throw new Error("Couldn't verify your account — try logging out and back in.");
+
+      // Re-verify identity with the current password before doing anything destructive
+      const { error: authErr } = await sb.auth.signInWithPassword({ email, password: deletePassword });
+      if (authErr) throw new Error("Incorrect password.");
+
+      const scheduledFor = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/request-account-deletion`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
-        body: JSON.stringify({ workspaceId: workspace.id }),
+        body: JSON.stringify({ workspaceId: workspace.id, scheduledFor }),
       });
-      if (!res.ok) throw new Error("Delete failed (" + res.status + ")");
-      await sb.auth.signOut();
-      window.location.reload();
+      if (!res.ok) throw new Error("Request failed (" + res.status + ")");
+      setAccountDeletion({ scheduledFor, requestedAt: new Date().toISOString() });
+      onClose();
     } catch (e) {
-      setDeleteErr(e.message || "Couldn't delete your account — check your connection and try again.");
+      setDeleteErr(e.message || "Couldn't process this request — check your connection and try again.");
+    } finally {
       setDeleting(false);
     }
   }
@@ -3070,11 +3123,6 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
             </div>
           </div>
         )}
-
-        <Section title="Account">
-          <button onClick={onContactUs} className="w-full text-left text-sm px-4 py-3 rounded-lg mb-2" style={{ background: BG, color: NAVY, fontWeight: 600 }}>Contact Us</button>
-          <button onClick={onLogout} className="w-full text-left text-sm px-4 py-3 rounded-lg" style={{ background: BG, color: NAVY, fontWeight: 600 }}>Log Out</button>
-        </Section>
 
         <Section title="Notifications">
           <button onClick={toggleEmployerPush} disabled={pushBusy} className="w-full text-left text-sm px-4 py-3 rounded-lg flex items-center justify-between" style={{ background: pushOn ? "rgba(255,107,26,0.15)" : BG, color: NAVY, fontWeight: 600 }}>
@@ -3286,9 +3334,14 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
           <input ref={fileRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
         </Section>
 
+        <Section title="Account">
+          <button onClick={onContactUs} className="w-full text-left text-sm px-4 py-3 rounded-lg mb-2" style={{ background: BG, color: NAVY, fontWeight: 600 }}>Contact Us</button>
+          <button onClick={onLogout} className="w-full text-left text-sm px-4 py-3 rounded-lg" style={{ background: BG, color: NAVY, fontWeight: 600 }}>Log Out</button>
+        </Section>
+
         <Section title="Delete Account">
           <div className="text-xs mb-3" style={{ color: SLATE }}>
-            Permanently deletes your login, your company, and all crew, timesheet, and payroll data. This cannot be undone. Export a backup first if you want a copy.
+            Schedules your login, company, and all crew, timesheet, and payroll data for deletion. You'll have <strong style={{ color: NAVY }}>30 days</strong> to restore your account before it's permanently erased. Export a backup first if you want a copy.
           </div>
           {!confirmDelete ? (
             <button onClick={() => setConfirmDelete(true)} className="w-full text-left text-sm px-4 py-3 rounded-lg flex items-center gap-2" style={{ background: BG, color: RED, border: `1px solid ${BORDER}`, fontWeight: 700 }}>
@@ -3296,14 +3349,15 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
             </button>
           ) : (
             <div className="p-3 rounded-lg" style={{ background: "rgba(239,83,80,0.08)", border: `1px solid ${RED}` }}>
-              <div className="text-xs mb-2" style={{ color: NAVY, fontWeight: 600 }}>Type DELETE to confirm — this immediately erases everything.</div>
+              <div className="text-xs mb-2" style={{ color: NAVY, fontWeight: 600 }}>Type DELETE and enter your password to confirm.</div>
               <input value={deleteTyped} onChange={(e) => setDeleteTyped(e.target.value)} placeholder="DELETE" className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER, background: CARD, color: NAVY }} />
+              <input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} placeholder="Your password" className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER, background: CARD, color: NAVY }} />
               {deleteErr && <div className="text-xs mb-2" style={{ color: RED }}>{deleteErr}</div>}
               <div className="flex gap-2">
-                <button onClick={handleDeleteAccount} disabled={deleteTyped.trim().toUpperCase() !== "DELETE" || deleting} className="flex-1 text-sm px-4 py-2 rounded-lg text-white" style={{ background: deleteTyped.trim().toUpperCase() === "DELETE" && !deleting ? RED : SLATE, fontWeight: 700 }}>
-                  {deleting ? "Deleting…" : "Permanently Delete"}
+                <button onClick={handleDeleteAccount} disabled={deleteTyped.trim().toUpperCase() !== "DELETE" || !deletePassword || deleting} className="flex-1 text-sm px-4 py-2 rounded-lg text-white" style={{ background: deleteTyped.trim().toUpperCase() === "DELETE" && deletePassword && !deleting ? RED : SLATE, fontWeight: 700 }}>
+                  {deleting ? "Verifying…" : "Schedule Deletion"}
                 </button>
-                <button onClick={() => { setConfirmDelete(false); setDeleteTyped(""); setDeleteErr(""); }} className="text-sm px-4 py-2 rounded-lg" style={{ background: CARD, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Cancel</button>
+                <button onClick={() => { setConfirmDelete(false); setDeleteTyped(""); setDeletePassword(""); setDeleteErr(""); }} className="text-sm px-4 py-2 rounded-lg" style={{ background: CARD, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Cancel</button>
               </div>
             </div>
           )}
