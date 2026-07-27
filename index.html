@@ -71,6 +71,14 @@ function getMonday(dateStr) {
   d.setDate(d.getDate() + diff);
   return d.toISOString().slice(0, 10);
 }
+function getWeekStart(dateStr, weekStartsOn) {
+  const wso = weekStartsOn === undefined || weekStartsOn === null ? 1 : weekStartsOn; // 0=Sun..6=Sat, default Monday
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay();
+  const diff = (day - wso + 7) % 7;
+  d.setDate(d.getDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
 function fmtDate(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -259,6 +267,7 @@ const DollarIcon = (p) => <Icon {...p}><path d="M12 2v20M17 6.5c0-1.9-2.2-3-5-3s
 const PrinterIcon = (p) => <Icon {...p}><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M6 17v4h12v-4"/></Icon>;
 const NoteIcon = (p) => <Icon {...p}><path d="M4 4h13l3 3v13H4z"/><path d="M17 4v3h3"/><path d="M8 12h8M8 16h5"/></Icon>;
 const XIcon = (p) => <Icon {...p}><path d="M6 6l12 12M18 6L6 18"/></Icon>;
+const TrashIcon = (p) => <Icon {...p}><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z"/></Icon>;
 const HistoryIcon = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></Icon>;
 const UndoIcon = (p) => <Icon {...p}><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 0 1 0 10h-1"/></Icon>;
 const RestoreIcon = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></Icon>;
@@ -266,6 +275,7 @@ const SearchIcon = (p) => <Icon {...p}><circle cx="11" cy="11" r="7"/><path d="M
 const EditIcon = (p) => <Icon {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></Icon>;
 const ShareIcon = (p) => <Icon {...p}><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.7l7.6-4.4M8.2 13.3l7.6 4.4"/></Icon>;
 const GearIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></Icon>;
+const BarChartIcon = (p) => <Icon {...p}><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/></Icon>;
 const LockIcon = (p) => <Icon {...p}><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></Icon>;
 const DownloadIcon = (p) => <Icon {...p}><path d="M12 3v13m0 0l-4-4m4 4l4-4"/><path d="M4 19h16"/></Icon>;
 const UploadIcon = (p) => <Icon {...p}><path d="M12 21V8m0 0l-4 4m4-4l4 4"/><path d="M4 19h16"/></Icon>;
@@ -283,7 +293,11 @@ const DEFAULT_SETTINGS = {
   overtime: { enabled: false, multiplier: 1.5, threshold: "weekly" }, // threshold: 'weekly' | 'daily'
   payPeriod: { type: "weekly", weekStartsOn: 1, biweeklyAnchor: todayStr() }, // type: 'weekly'|'biweekly'|'semimonthly'
   breakDeduction: { enabled: false, minutes: 30 }, // subtracted once per day worked
-  company: { name: "", address: "", phone: "", email: "", logo: null },
+  rounding: { enabled: false, interval: 15 }, // interval in minutes; rounds to nearest. When disabled, exact minutes worked are used.
+  noClockInReasons: ["Sick", "Vacation", "Day Off", "Weather", "Other"],
+  travelTime: { enabled: false }, // when enabled, employees can log travel minutes alongside worked hours; paid at the same rate and shown separately
+  payrollSummary: { enabled: false, mode: "review" }, // mode: "review" (employer approves before sending) or "auto" (sends the moment a pay period closes)
+  company: { name: "", address: "", city: "", province: "", postal: "", phone: "", email: "", logo: null },
   deductions: [], // [{id, label, type: 'percent'|'flat', value}]
 };
 
@@ -300,6 +314,8 @@ function App() {
   const [employerPin, setEmployerPin] = useState(null);
   const [jobSites, setJobSites] = useState([]);
   const [activeShifts, setActiveShifts] = useState({});
+  const [timeOffMarks, setTimeOffMarks] = useState({});
+  const [sentPayrollSummaries, setSentPayrollSummaries] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
 
   const [role, setRole] = useState(() => localStorage.getItem("wp_role") || null);
@@ -350,6 +366,8 @@ function App() {
       setEmployerPin(map.employerPin ?? null);
       setJobSites(map.jobSites || []);
       setActiveShifts(map.activeShifts || {});
+      setTimeOffMarks(map.timeOffMarks || {});
+      setSentPayrollSummaries(map.sentPayrollSummaries || []);
       setSettings({ ...DEFAULT_SETTINGS, ...(map.settings || {}) });
     } catch (e) {
       setError("Couldn't connect to the shared database. Check your connection.");
@@ -463,7 +481,9 @@ function App() {
         ) : (
           <EmployerApp
             employees={employees} entries={entries} dayNotes={dayNotes} paidRanges={paidRanges} deletedLog={deletedLog} employerPin={employerPin} workspace={workspace}
-            jobSites={jobSites} settings={settings} activeShifts={activeShifts} setActiveShifts={setActiveShifts}
+            setEmployees={setEmployees} setEntries={setEntries} setDayNotes={setDayNotes} setPaidRanges={setPaidRanges} setDeletedLog={setDeletedLog} setSettings={setSettings} setEmployerPin={setEmployerPin}
+            jobSites={jobSites} settings={settings} activeShifts={activeShifts} setActiveShifts={setActiveShifts} setJobSites={setJobSites} timeOffMarks={timeOffMarks} setTimeOffMarks={setTimeOffMarks}
+            sentPayrollSummaries={sentPayrollSummaries} setSentPayrollSummaries={setSentPayrollSummaries}
             persist={persist} switchUser={switchUser} modalOpenRef={modalOpenRef} saving={saving}
           />
         )
@@ -497,7 +517,7 @@ function App() {
             return (
               <EmployeeApp
                 me={me} entries={entries} dayNotes={dayNotes} jobSites={jobSites} settings={settings} workspaceId={activeWorkspaceId} activeShifts={activeShifts} setActiveShifts={setActiveShifts}
-                persist={persist} allEntries={entries} switchUser={switchUser}
+                persist={persist} allEntries={entries} switchUser={switchUser} setEntries={setEntries} setDayNotes={setDayNotes} timeOffMarks={timeOffMarks} setTimeOffMarks={setTimeOffMarks}
               />
             );
           })()
@@ -527,9 +547,7 @@ function BrandHeader({ right }) {
   return (
     <div className="flex items-center justify-between px-5 pt-6 pb-2 max-w-4xl mx-auto w-full">
       <div className="flex items-center gap-2">
-        <div className="brand text-3xl" style={{ fontWeight: 800 }}>
-          <span style={{ color: NAVY }}>Labour</span><span style={{ color: ROYAL }}>Arc</span>
-        </div>
+        <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 34, objectFit: "contain" }} />
       </div>
       {right}
     </div>
@@ -557,7 +575,7 @@ function RoleGate({ setRole }) {
 }
 
 function EmployerAuthScreen({ onBack }) {
-  const [mode, setMode] = useState("signup"); // signup | login | reset
+  const [mode, setMode] = useState("login"); // signup | login | reset
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
@@ -625,8 +643,8 @@ function EmployerAuthScreen({ onBack }) {
       <div className="flex-1 flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-xs">
           <div className="flex gap-2 mb-5">
-            <button onClick={() => setMode("signup")} className="flex-1 py-2 rounded-lg text-sm" style={{ fontWeight: 700, background: mode === "signup" ? ROYAL : BG, color: mode === "signup" ? "white" : NAVY }}>Sign Up</button>
             <button onClick={() => setMode("login")} className="flex-1 py-2 rounded-lg text-sm" style={{ fontWeight: 700, background: mode === "login" ? ROYAL : BG, color: mode === "login" ? "white" : NAVY }}>Log In</button>
+            <button onClick={() => setMode("signup")} className="flex-1 py-2 rounded-lg text-sm" style={{ fontWeight: 700, background: mode === "signup" ? ROYAL : BG, color: mode === "signup" ? "white" : NAVY }}>Sign Up</button>
           </div>
           <div className="brand text-lg mb-4 text-center" style={{ color: NAVY, fontWeight: 800 }}>
             {mode === "signup" ? "Create Your Employer Account" : "Welcome Back"}
@@ -887,7 +905,7 @@ function EmployeePicker({ employees, companyName, onPick, onBack }) {
 
 /* ================= EMPLOYER APP ================= */
 
-function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, workspace, jobSites, settings, persist, switchUser, modalOpenRef, saving, activeShifts, setActiveShifts }) {
+function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, workspace, jobSites, settings, persist, switchUser, modalOpenRef, saving, activeShifts, setActiveShifts, setEmployees, setEntries, setDayNotes, setPaidRanges, setDeletedLog, setJobSites, setSettings, setEmployerPin, timeOffMarks, setTimeOffMarks, sentPayrollSummaries, setSentPayrollSummaries }) {
   const [tab, setTab] = useState("log");
   const [empSearch, setEmpSearch] = useState("");
   const [logSearch, setLogSearch] = useState("");
@@ -914,24 +932,26 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
   const [contactOpen, setContactOpen] = useState(false);
   const [detailEmpId, setDetailEmpId] = useState(null);
   const [detailSiteId, setDetailSiteId] = useState(null);
+  const [reviewPayrollOpen, setReviewPayrollOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
 
   const [siteName, setSiteName] = useState("");
   const [siteAddress, setSiteAddress] = useState("");
   const [logSiteId, setLogSiteId] = useState("");
 
   useEffect(() => {
-    modalOpenRef.current = !!(noteCell || payslipEmp || bulkPayslip || settingsOpen || contactOpen || detailEmpId || detailSiteId);
-  }, [noteCell, payslipEmp, bulkPayslip, settingsOpen, contactOpen, detailEmpId, detailSiteId]);
+    modalOpenRef.current = !!(noteCell || payslipEmp || bulkPayslip || settingsOpen || contactOpen || detailEmpId || detailSiteId || reportsOpen);
+  }, [noteCell, payslipEmp, bulkPayslip, settingsOpen, contactOpen, detailEmpId, detailSiteId, reportsOpen]);
 
   function addSite() {
     if (!siteName.trim()) return;
-    persist("jobSites", [...jobSites, { id: uid(), name: siteName.trim(), address: siteAddress.trim() }], () => {});
+    persist("jobSites", [...jobSites, { id: uid(), name: siteName.trim(), address: siteAddress.trim() }], setJobSites);
     setSiteName(""); setSiteAddress("");
   }
   function removeSite(id) {
-    persist("jobSites", jobSites.filter((s) => s.id !== id), () => {});
+    persist("jobSites", jobSites.filter((s) => s.id !== id), setJobSites);
   }
-  function saveSitesLocal(next) { persist("jobSites", next, () => {}); }
+  function saveSitesLocal(next) { persist("jobSites", next, setJobSites); }
   function siteSpend(siteId) {
     return entries.filter((t) => t.siteId === siteId).reduce((sum, t) => {
       const emp = employees.find((e) => e.id === t.employeeId);
@@ -947,14 +967,14 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
 
   function addEmployee() {
     if (!empName.trim() || !empRate || Number(empRate) <= 0) return;
-    persist("employees", [...employees, { id: uid(), name: empName.trim(), rate: Number(empRate), pin: null }], () => {});
+    persist("employees", [...employees, { id: uid(), name: empName.trim(), rate: Number(empRate), pin: null }], setEmployees);
     setEmpName(""); setEmpRate("");
   }
-  function saveEmployeesLocal(next) { persist("employees", next, () => {}); }
-  function saveEntriesLocal(next) { persist("entries", next, () => {}); }
-  function saveNotesLocal(next) { persist("dayNotes", next, () => {}); }
-  function savePaidLocal(next) { persist("paidRanges", next, () => {}); }
-  function saveLogLocal(next) { persist("deletedLog", next, () => {}); }
+  function saveEmployeesLocal(next) { persist("employees", next, setEmployees); }
+  function saveEntriesLocal(next) { persist("entries", next, setEntries); }
+  function saveNotesLocal(next) { persist("dayNotes", next, setDayNotes); }
+  function savePaidLocal(next) { persist("paidRanges", next, setPaidRanges); }
+  function saveLogLocal(next) { persist("deletedLog", next, setDeletedLog); }
 
   function startEditEmp(e) { setEditingEmpId(e.id); setEditName(e.name); setEditRate(String(e.rate)); }
   function saveEditEmp(id) {
@@ -1088,23 +1108,20 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
         <div className="stripe-divider" />
         <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
           <div className="flex items-center justify-between">
-            <div className="brand text-3xl" style={{ fontWeight: 800 }}>
-              <span style={{ color: "#F4F1EA" }}>Labour</span><span style={{ color: ROYAL }}>Arc</span>
-            </div>
+            <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 34, objectFit: "contain" }} />
             <div className="flex items-center gap-3">
               {saving && <span className="text-xs" style={{ color: SLATE }}>Saving…</span>}
-              <button onClick={() => setContactOpen(true)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Contact Us</button>
+              <button onClick={() => setReportsOpen(true)} style={{ color: "#C7CBD1" }}><BarChartIcon size={19} /></button>
               <button onClick={() => setSettingsOpen(true)} style={{ color: "#C7CBD1" }}><GearIcon size={20} /></button>
-              <button onClick={switchUser} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Log Out</button>
             </div>
           </div>
           <div className="mono text-xs mt-1" style={{ color: SLATE, letterSpacing: "0.15em" }}>EMPLOYER DASHBOARD</div>
-          <div className="flex gap-5 mt-5 border-b overflow-x-auto" style={{ borderColor: BORDER, scrollbarWidth: "none" }}>
+          <div className="flex gap-2 mt-5 border-b" style={{ borderColor: BORDER }}>
             {tabs.map((t) => {
-              const Ic = t.icon; const active = tab === t.id;
+              const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => setTab(t.id)} className="brand text-sm pb-3 flex items-center gap-1.5 flex-shrink-0" style={{ fontWeight: 700, letterSpacing: "0.02em", color: active ? ROYAL : SLATE, borderBottom: `2px solid ${active ? ROYAL : "transparent"}`, whiteSpace: "nowrap" }}>
-                  <Ic size={14} />{t.label}
+                <button key={t.id} onClick={() => setTab(t.id)} className="brand pb-3 flex-1 text-center" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.01em", color: active ? ROYAL : SLATE, borderBottom: `2px solid ${active ? ROYAL : "transparent"}`, whiteSpace: "nowrap" }}>
+                  {t.label}
                 </button>
               );
             })}
@@ -1173,7 +1190,29 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
 
         {tab === "log" && (
           <div>
-            <DashboardOverview employees={employees} entries={entries} jobSites={jobSites} activeShifts={activeShifts} settings={settings} />
+            {(() => {
+              if (!settings.payrollSummary || !settings.payrollSummary.enabled || settings.payrollSummary.mode !== "review") return null;
+              const closed = getPayPeriodRange(settings.payPeriod, "previous");
+              if (closed.end > todayStr()) return null; // period hasn't actually ended yet
+              if ((sentPayrollSummaries || []).includes(closed.end)) return null; // already sent
+              const days = dateRange(closed.start, closed.end);
+              const gh = {};
+              for (const t of entries) { if (t.date >= closed.start && t.date <= closed.end) gh[t.employeeId + "|" + t.date] = (gh[t.employeeId + "|" + t.date] || 0) + t.hours; }
+              const total = employees.reduce((s, e) => s + calcPay(e, days, gh, settings).net, 0);
+              return (
+                <div onClick={() => setReviewPayrollOpen(true)} className="p-4 rounded-xl mb-4 shadow-sm relative overflow-hidden cursor-pointer" style={{ background: CARD, border: `1px solid ${ROYAL}` }}>
+                  <div style={{ position: "absolute", top: 0, left: 0, width: 4, height: "100%", background: ROYAL }} />
+                  <div style={{ paddingLeft: 6 }} className="flex items-center justify-between">
+                    <div>
+                      <div className="brand text-sm" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>PAYROLL PERIOD READY</div>
+                      <div className="text-xs mt-1" style={{ color: SLATE }}>{fmtDateWeekday(closed.start)} – {fmtDateWeekday(closed.end)} · {employees.length} employees · {fmtMoney(total, settings.currency)} total</div>
+                    </div>
+                    <button className="text-xs px-3 py-2 rounded-lg text-white flex-shrink-0" style={{ background: ROYAL, fontWeight: 700 }}>Review</button>
+                  </div>
+                </div>
+              );
+            })()}
+            <DashboardOverview employees={employees} entries={entries} jobSites={jobSites} activeShifts={activeShifts} settings={settings} timeOffMarks={timeOffMarks} />
             <Card icon={ClockIcon} title="Log Hours">
               {employees.length === 0 ? <div className="text-sm" style={{ color: SLATE }}>Add crew members first.</div> : (
                 <div>
@@ -1445,7 +1484,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
         />
       )}
       {payslipEmp && (
-        <PayslipModal employee={employees.find((e) => e.id === payslipEmp)} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} settings={settings} onClose={() => setPayslipEmp(null)} />
+        <PayslipModal employee={employees.find((e) => e.id === payslipEmp)} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} settings={settings} entries={entries} onClose={() => setPayslipEmp(null)} />
       )}
       {bulkPayslip && (
         <BulkPayslipModal employees={empRangeTotals} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} settings={settings} onClose={() => setBulkPayslip(false)} />
@@ -1461,16 +1500,18 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
           onSaveSites={(next) => persist("jobSites", next, () => {})}
           allData={{ employees, entries, dayNotes, paidRanges, deletedLog, employerPin, jobSites, settings }}
           onImport={(data) => {
-            if (data.employees) persist("employees", data.employees, () => {});
-            if (data.entries) persist("entries", data.entries, () => {});
-            if (data.dayNotes) persist("dayNotes", data.dayNotes, () => {});
-            if (data.paidRanges) persist("paidRanges", data.paidRanges, () => {});
-            if (data.deletedLog) persist("deletedLog", data.deletedLog, () => {});
-            if (data.employerPin !== undefined) persist("employerPin", data.employerPin, () => {});
-            if (data.jobSites) persist("jobSites", data.jobSites, () => {});
-            if (data.settings) persist("settings", { ...DEFAULT_SETTINGS, ...data.settings }, () => {});
+            if (data.employees) persist("employees", data.employees, setEmployees);
+            if (data.entries) persist("entries", data.entries, setEntries);
+            if (data.dayNotes) persist("dayNotes", data.dayNotes, setDayNotes);
+            if (data.paidRanges) persist("paidRanges", data.paidRanges, setPaidRanges);
+            if (data.deletedLog) persist("deletedLog", data.deletedLog, setDeletedLog);
+            if (data.employerPin !== undefined) persist("employerPin", data.employerPin, setEmployerPin);
+            if (data.jobSites) persist("jobSites", data.jobSites, setJobSites);
+            if (data.settings) persist("settings", { ...DEFAULT_SETTINGS, ...data.settings }, setSettings);
           }}
           onClose={() => setSettingsOpen(false)}
+          onLogout={switchUser}
+          onContactUs={() => setContactOpen(true)}
         />
       )}
       {contactOpen && <ContactUsModal onClose={() => setContactOpen(false)} />}
@@ -1495,6 +1536,29 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
           onClose={() => setDetailSiteId(null)}
         />
       )}
+      {reviewPayrollOpen && (
+        <PayrollReviewModal
+          employees={employees}
+          entries={entries}
+          settings={settings}
+          workspace={workspace}
+          onSent={(periodEnd) => {
+            persist("sentPayrollSummaries", [...(sentPayrollSummaries || []), periodEnd], setSentPayrollSummaries);
+            setReviewPayrollOpen(false);
+          }}
+          onClose={() => setReviewPayrollOpen(false)}
+        />
+      )}
+      {reportsOpen && (
+        <ReportsModal
+          employees={employees}
+          entries={entries}
+          jobSites={jobSites}
+          timeOffMarks={timeOffMarks}
+          settings={settings}
+          onClose={() => setReportsOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1504,6 +1568,12 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
 function roundToHalfHour(hoursDecimal) {
   return Math.round(hoursDecimal * 2) / 2;
 }
+function roundHoursForSettings(hoursDecimal, settings) {
+  const r = settings && settings.rounding;
+  if (!r || !r.enabled) return Math.round(hoursDecimal * 100) / 100; // exact, just clean float noise
+  const intervalHrs = (r.interval || 15) / 60;
+  return Math.round(hoursDecimal / intervalHrs) * intervalHrs;
+}
 function minutesBetween(start, end) {
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
@@ -1512,13 +1582,14 @@ function minutesBetween(start, end) {
   return mins;
 }
 
-function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, persist, allEntries, switchUser, activeShifts, setActiveShifts }) {
+function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, persist, allEntries, switchUser, activeShifts, setActiveShifts, setEntries, setDayNotes, timeOffMarks, setTimeOffMarks }) {
   const [tab, setTab] = useState("log");
   const [logDate, setLogDate] = useState(todayStr());
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [logSiteId, setLogSiteId] = useState("");
   const [logNote, setLogNote] = useState("");
+  const [logTravelMin, setLogTravelMin] = useState("");
   const [rangeStart, setRangeStart] = useState(getMonday(todayStr()));
   const [rangeEnd, setRangeEnd] = useState(todayStr());
   const [payslipOpen, setPayslipOpen] = useState(false);
@@ -1547,9 +1618,9 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
     haptic(20);
     const startedAt = new Date(myShift.startedAt);
     const hoursRaw = (Date.now() - startedAt.getTime()) / 3600000;
-    const hours = roundToHalfHour(hoursRaw);
+    const hours = roundHoursForSettings(hoursRaw, settings);
     const entry = { id: uid(), employeeId: me.id, date: todayStr(), hours: Math.max(hours, 0.5), siteId: myShift.siteId || null, startTime: startedAt.toTimeString().slice(0, 5), endTime: new Date().toTimeString().slice(0, 5) };
-    persist("entries", [...allEntries, entry], () => {});
+    persist("entries", [...allEntries, entry], setEntries);
     const next = { ...(activeShifts || {}) };
     delete next[me.id];
     persist("activeShifts", next, setActiveShifts);
@@ -1591,24 +1662,26 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
     }
   }, [remindMe, myEntries]);
 
-  const computedHours = startTime && endTime ? roundToHalfHour(minutesBetween(startTime, endTime) / 60) : 0;
+  const computedHours = startTime && endTime ? roundHoursForSettings(minutesBetween(startTime, endTime) / 60, settings) : 0;
 
   function addEntry() {
     if (!logDate || !startTime || !endTime || computedHours <= 0) return;
     haptic(15);
-    const entry = { id: uid(), employeeId: me.id, date: logDate, hours: computedHours, startTime, endTime, siteId: logSiteId || null };
-    persist("entries", [...allEntries, entry], () => {});
+    const travelMin = Math.max(0, Number(logTravelMin) || 0);
+    const totalHours = Math.round((computedHours + travelMin / 60) * 100) / 100;
+    const entry = { id: uid(), employeeId: me.id, date: logDate, hours: totalHours, startTime, endTime, siteId: logSiteId || null, travelMinutes: travelMin || undefined };
+    persist("entries", [...allEntries, entry], setEntries);
     if (logNote.trim()) {
       const key = me.id + "|" + logDate;
-      persist("dayNotes", { ...dayNotes, [key]: logNote.trim() }, () => {});
+      persist("dayNotes", { ...dayNotes, [key]: logNote.trim() }, setDayNotes);
     }
     if (workspaceId) {
-      notifyEmployer(workspaceId, "Hours logged", `${me.name} logged ${computedHours}h on ${fmtDate(logDate)}.`);
-      if (computedHours > 12) {
-        notifyEmployer(workspaceId, "Unusually long day", `${me.name} logged ${computedHours}h on ${fmtDate(logDate)} — you may want to double check this.`);
+      notifyEmployer(workspaceId, "Hours logged", `${me.name} logged ${totalHours}h on ${fmtDate(logDate)}.`);
+      if (totalHours > 12) {
+        notifyEmployer(workspaceId, "Unusually long day", `${me.name} logged ${totalHours}h on ${fmtDate(logDate)} — you may want to double check this.`);
       }
     }
-    setStartTime(""); setEndTime(""); setLogNote(""); setLogSiteId("");
+    setStartTime(""); setEndTime(""); setLogNote(""); setLogSiteId(""); setLogTravelMin("");
   }
   function setPreset(preset) {
     const t = todayStr();
@@ -1634,9 +1707,7 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
         <div className="stripe-divider" />
         <div className="max-w-4xl mx-auto px-5 pt-6 pb-4">
           <div className="flex items-center justify-between">
-            <div className="brand text-3xl" style={{ fontWeight: 800 }}>
-              <span style={{ color: "#F4F1EA" }}>Labour</span><span style={{ color: ROYAL }}>Arc</span>
-            </div>
+            <img src="icons/labourarc-logo.png" alt="LabourArc" style={{ height: 34, objectFit: "contain" }} />
             <div className="flex items-center gap-3">
               <button onClick={() => setContactOpen(true)} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Contact Us</button>
               <button onClick={switchUser} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Log Out</button>
@@ -1709,7 +1780,7 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
                 </div>
               </div>
               {computedHours > 0 && (
-                <div className="text-xs mb-2 mono" style={{ color: ROYAL, fontWeight: 700 }}>{computedHours}h (rounded to nearest 30 min)</div>
+                <div className="text-xs mb-2 mono" style={{ color: ROYAL, fontWeight: 700 }}>{computedHours}h{settings.rounding && settings.rounding.enabled ? ` (rounded to nearest ${settings.rounding.interval} min)` : " (exact)"}</div>
               )}
               {jobSites.length > 0 && (
                 <select value={logSiteId} onChange={(e) => setLogSiteId(e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER, background: BG, color: NAVY }}>
@@ -1718,10 +1789,17 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
                 </select>
               )}
               <input value={logNote} onChange={(e) => setLogNote(e.target.value)} placeholder="Note (optional) — e.g. task…" className="w-full px-3 py-2 rounded-lg border text-sm mb-3" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
+              {settings.travelTime && settings.travelTime.enabled && (
+                <div className="flex items-center gap-2 mb-3">
+                  <input type="number" min="0" value={logTravelMin} onChange={(e) => setLogTravelMin(e.target.value)} placeholder="0" className="w-20 px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER, background: BG, color: NAVY }} />
+                  <div className="text-xs" style={{ color: SLATE }}>min travel time (paid at your regular rate)</div>
+                </div>
+              )}
               <button onClick={addEntry} disabled={computedHours <= 0} className="w-full text-sm px-4 py-2.5 rounded-lg text-white" style={{ background: computedHours <= 0 ? SLATE : ROYAL, fontWeight: 700 }}>
                 Submit Hours
               </button>
             </Card>
+            <ThisWeekStrip me={me} myEntries={myEntries} timeOffMarks={timeOffMarks} settings={settings} onSetReason={(date, reason) => { const key = me.id + "|" + date; persist("timeOffMarks", { ...(timeOffMarks || {}), [key]: reason }, setTimeOffMarks); }} />
             <div className="text-xs mb-2" style={{ color: SLATE, fontWeight: 600 }}>Your recent entries</div>
             {myEntries.length === 0 ? <Empty text="No hours logged yet." /> : (
               <div className="space-y-2">
@@ -1730,6 +1808,7 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
                     <div>
                       <div className="mono text-xs px-2 py-1 rounded inline-block" style={{ background: BG, color: NAVY }}>{fmtDate(t.date)}</div>
                       {t.startTime && t.endTime && <div className="mono text-xs mt-1" style={{ color: SLATE }}>{t.startTime}–{t.endTime}</div>}
+                      {t.travelMinutes > 0 && <div className="mono text-xs mt-0.5" style={{ color: ROYAL }}>+{t.travelMinutes}m travel</div>}
                     </div>
                     <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{t.hours}h</div>
                   </Row>
@@ -1771,7 +1850,7 @@ function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, p
       </div>
 
       {payslipOpen && (
-        <PayslipModal employee={me} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} settings={settings} onClose={() => setPayslipOpen(false)} />
+        <PayslipModal employee={me} rangeStart={rangeStart} rangeEnd={rangeEnd} days={days} gridHours={gridHours} dayNotes={dayNotes} settings={settings} entries={allEntries} onClose={() => setPayslipOpen(false)} />
       )}
       {contactOpen && <ContactUsModal onClose={() => setContactOpen(false)} />}
     </div>
@@ -1831,8 +1910,15 @@ function getPayPeriodRange(payPeriod, which) {
     const start = addDays(anchor, idx * 14);
     return { start, end: addDays(start, 13) };
   }
-  const monday = getMonday(t);
-  const start = which === "current" ? monday : addDays(monday, -7);
+  if (payPeriod.type === "monthly") {
+    const d = new Date(t + "T00:00:00");
+    if (which === "current") {
+      return { start: toISO(new Date(d.getFullYear(), d.getMonth(), 1)), end: toISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)) };
+    }
+    return { start: toISO(new Date(d.getFullYear(), d.getMonth() - 1, 1)), end: toISO(new Date(d.getFullYear(), d.getMonth(), 0)) };
+  }
+  const weekStart = getWeekStart(t, payPeriod.weekStartsOn);
+  const start = which === "current" ? weekStart : addDays(weekStart, -7);
   return { start, end: addDays(start, 6) };
 }
 
@@ -1868,7 +1954,7 @@ function DateRangeBar({ rangeStart, rangeEnd, setRangeStart, setRangeEnd, setPre
 function ContactUsModal({ onClose }) {
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
-  const supportEmail = "support@barkathomecreations.com";
+  const supportEmail = "barkathomecreations@gmail.com";
 
   function sendEmail() {
     const subject = encodeURIComponent("LabourArc — Support Request");
@@ -2189,7 +2275,7 @@ function HoursRingCard({ weekHours, target }) {
   );
 }
 
-function DashboardOverview({ employees, entries, jobSites, activeShifts, settings }) {
+function DashboardOverview({ employees, entries, jobSites, activeShifts, settings, timeOffMarks }) {
   const monday = getMonday(todayStr());
   const weekDays = useMemo(() => dateRange(monday, todayStr()), [monday]);
 
@@ -2249,12 +2335,15 @@ function DashboardOverview({ employees, entries, jobSites, activeShifts, setting
                 <span className="mono text-xs" style={{ color: YELLOW, fontWeight: 700 }}>{weekHoursByEmp[e.id].toFixed(1)}h</span>
               </div>
             ))}
-            {noHoursWorkers.map((e) => (
-              <div key={e.id} className="flex items-center justify-between py-1.5">
-                <span className="text-sm" style={{ color: NAVY }}>{e.name} has no hours logged this week</span>
-                <span className="mono text-xs" style={{ color: SLATE, fontWeight: 700 }}>0h</span>
-              </div>
-            ))}
+            {noHoursWorkers.map((e) => {
+              const reason = timeOffMarks && timeOffMarks[e.id + "|" + todayStr()];
+              return (
+                <div key={e.id} className="flex items-center justify-between py-1.5">
+                  <span className="text-sm" style={{ color: NAVY }}>{e.name} has no hours logged this week{reason ? ` — ${reason}` : ""}</span>
+                  <span className="mono text-xs" style={{ color: SLATE, fontWeight: 700 }}>0h</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2278,6 +2367,52 @@ function DashboardOverview({ employees, entries, jobSites, activeShifts, setting
         </div>
       )}
     </>
+  );
+}
+
+function ThisWeekStrip({ me, myEntries, timeOffMarks, settings, onSetReason }) {
+  const [openDate, setOpenDate] = useState(null);
+  const weekStart = getWeekStart(todayStr(), settings.payPeriod && settings.payPeriod.weekStartsOn);
+  const days = dateRange(weekStart, todayStr()); // week-start through today only (no future days)
+  const reasons = (settings && settings.noClockInReasons) || ["Sick", "Vacation", "Day Off", "Weather", "Other"];
+
+  return (
+    <div className="mb-4">
+      <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>THIS WEEK</div>
+      <div className="space-y-1.5">
+        {days.map((d) => {
+          const dayHours = myEntries.filter((t) => t.date === d).reduce((s, t) => s + t.hours, 0);
+          const key = me.id + "|" + d;
+          const reason = timeOffMarks && timeOffMarks[key];
+          if (dayHours > 0) {
+            return (
+              <div key={d} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+                <span className="mono text-xs" style={{ color: NAVY }}>{fmtDateWeekday(d)}</span>
+                <span className="mono text-xs" style={{ color: GREEN, fontWeight: 700 }}>{dayHours}h</span>
+              </div>
+            );
+          }
+          return (
+            <div key={d}>
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(239,83,80,0.08)", border: `1px solid ${RED}` }}>
+                <div>
+                  <span className="mono text-xs" style={{ color: RED, fontWeight: 700 }}>{fmtDateWeekday(d)} · NO CLOCK-IN</span>
+                  {reason && <div className="text-xs mt-0.5" style={{ color: SLATE }}>{reason}</div>}
+                </div>
+                <button onClick={() => setOpenDate(openDate === d ? null : d)} className="mono text-xs px-2 py-1 rounded" style={{ color: RED, fontWeight: 700 }}>{reason ? "Change" : "Select Reason"}</button>
+              </div>
+              {openDate === d && (
+                <div className="flex flex-wrap gap-1.5 mt-1.5 mb-1">
+                  {reasons.map((r) => (
+                    <button key={r} onClick={() => { onSetReason(d, r); setOpenDate(null); }} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: reason === r ? ROYAL : BG, color: reason === r ? "white" : NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>{r}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -2360,7 +2495,7 @@ function payslipRows(employee, days, gridHours, dayNotes) {
   return days.map((d) => ({ date: d, hours: gridHours[employee.id + "|" + d] || 0, note: dayNotes[employee.id + "|" + d] || "" })).filter((r) => r.hours > 0 || r.note);
 }
 
-function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings }) {
+function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings, travelMinutes }) {
   const currency = settings.currency;
   const company = settings.company || {};
   const otOn = settings.overtime && settings.overtime.enabled;
@@ -2368,13 +2503,19 @@ function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings }) {
     <div className="px-6 py-6">
       <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: `2px solid ${DARK}` }}>
         <div>
-          {company.logo && <img src={company.logo} alt="" style={{ maxHeight: 44, maxWidth: 160, objectFit: "contain", marginBottom: 6 }} />}
+          {company.logo && <img src={company.logo} alt="" style={{ maxHeight: 72, maxWidth: 240, objectFit: "contain", marginBottom: 8 }} />}
           <div className="brand text-xl" style={{ fontWeight: 800 }}>
             {company.name ? <span style={{ color: DARK }}>{company.name}</span> : (<><span style={{ color: DARK }}>Labour</span><span style={{ color: ROYAL }}>Arc</span></>)}
           </div>
-          {(company.address || company.phone || company.email) && (
+          {company.address && <div className="text-xs mt-1" style={{ color: SLATE }}>{company.address}</div>}
+          {(company.city || company.province || company.postal) && (
+            <div className="text-xs" style={{ color: SLATE }}>
+              {[company.city, company.province].filter(Boolean).join(", ")}{company.postal ? " " + company.postal : ""}
+            </div>
+          )}
+          {(company.phone || company.email) && (
             <div className="text-xs mt-1" style={{ color: SLATE }}>
-              {[company.address, company.phone, company.email].filter(Boolean).join(" · ")}
+              {[company.phone, company.email].filter(Boolean).join(" · ")}
             </div>
           )}
         </div>
@@ -2409,21 +2550,319 @@ function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings }) {
             {calc.overtimeHours > 0 && <div className="flex justify-between mono text-xs" style={{ color: SLATE }}><span>Overtime ({calc.overtimeHours.toFixed(2)}h @ {settings.overtime.multiplier}x)</span><span>{fmtMoney(calc.overtimeHours * employee.rate * settings.overtime.multiplier, currency)}</span></div>}
           </>
         )}
+        {travelMinutes > 0 && (
+          <div className="flex justify-between mono text-xs" style={{ color: SLATE }}><span>Includes {travelMinutes} min travel time</span><span>paid at regular rate</span></div>
+        )}
         <div className="flex justify-between mono text-sm pt-1" style={{ color: DARK, fontWeight: 700, borderTop: `1px solid ${BORDER}` }}><span>Gross Pay</span><span>{fmtMoney(calc.gross, currency)}</span></div>
         {calc.deductionLines.map((d, i) => (
           <div key={i} className="flex justify-between mono text-xs" style={{ color: RED }}><span>− {d.label}</span><span>−{fmtMoney(d.amount, currency)}</span></div>
         ))}
         <div className="flex justify-between mono text-base pt-2" style={{ color: ROYAL, fontWeight: 800, borderTop: `2px solid ${DARK}` }}><span>Net Pay</span><span>{fmtMoney(calc.net, currency)}</span></div>
       </div>
-      <div className="mono text-xs text-center pt-4" style={{ color: SLATE, borderTop: `1px solid ${BORDER}` }}>Powered by Barkat Home Creations LTD.</div>
     </div>
   );
 }
 
-function PayslipModal({ employee, rangeStart, rangeEnd, days, gridHours, dayNotes, settings, onClose }) {
+function PayrollReviewModal({ employees, entries, settings, workspace, onSent, onClose }) {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  const period = getPayPeriodRange(settings.payPeriod, "previous");
+  const days = useMemo(() => dateRange(period.start, period.end), [period.start, period.end]);
+  const gridHours = useMemo(() => {
+    const map = {};
+    for (const t of entries) { if (t.date >= period.start && t.date <= period.end) map[t.employeeId + "|" + t.date] = (map[t.employeeId + "|" + t.date] || 0) + t.hours; }
+    return map;
+  }, [entries, period.start, period.end]);
+
+  const rows = employees.map((e) => ({ employee: e, calc: calcPay(e, days, gridHours, settings) })).filter((r) => r.calc.totalHours > 0);
+  const total = rows.reduce((s, r) => s + r.calc.net, 0);
+  const noEmail = employees.filter((e) => !e.email).length;
+
+  async function handleSend() {
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-payroll-summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "apikey": SUPABASE_ANON_KEY },
+        body: JSON.stringify({ workspaceId: workspace.id, periodStart: period.start, periodEnd: period.end }),
+      });
+      if (!res.ok) throw new Error("Send failed (" + res.status + ")");
+      onSent(period.end);
+    } catch (e) {
+      setError(e.message || "Couldn't send — check your connection and try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="no-print fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-5" style={{ background: "rgba(0,0,0,0.6)", zIndex: 50 }} onClick={onClose}>
+      <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden" style={{ background: CARD, maxHeight: "88vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        <div className="stripe-divider" />
+        <div className="px-5 pt-4 pb-3 flex items-start justify-between" style={{ borderBottom: `1px solid ${BORDER}` }}>
+          <div>
+            <div className="brand text-xl" style={{ color: NAVY, fontWeight: 800 }}>Review Payroll</div>
+            <div className="mono text-xs mt-1" style={{ color: SLATE }}>{fmtDateWeekday(period.start)} – {fmtDateWeekday(period.end)}</div>
+          </div>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
+        </div>
+
+        <div className="overflow-y-auto px-5 py-4" style={{ flex: 1 }}>
+          <div className="p-4 rounded-lg mb-4 text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+            <div className="brand text-3xl" style={{ color: ROYAL, fontWeight: 800 }}>{fmtMoney(total, settings.currency)}</div>
+            <div className="mono text-xs mt-1" style={{ color: SLATE }}>TOTAL PAYROLL · {rows.length} EMPLOYEES</div>
+          </div>
+
+          {rows.length === 0 ? (
+            <div className="text-sm text-center py-6" style={{ color: SLATE }}>No hours were logged in this period.</div>
+          ) : (
+            rows.map((r) => (
+              <Row key={r.employee.id}>
+                <div style={{ color: NAVY, fontWeight: 600 }}>{r.employee.name}{!r.employee.email && <span className="mono text-xs ml-1.5" style={{ color: YELLOW }}>· no email</span>}</div>
+                <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{fmtMoney(r.calc.net, settings.currency)}</div>
+              </Row>
+            ))
+          )}
+
+          {noEmail > 0 && (
+            <div className="text-xs mt-3" style={{ color: SLATE }}>{noEmail} of {employees.length} employees have no email on file and won't receive an automatic summary — they can still be paid as normal, this only affects the automated email.</div>
+          )}
+          {error && <div className="text-xs mt-3" style={{ color: RED }}>{error}</div>}
+        </div>
+
+        <div className="px-5 pb-5 pt-2">
+          <button onClick={handleSend} disabled={sending || rows.length === 0} className="w-full text-sm px-4 py-3 rounded-lg text-white" style={{ background: sending || rows.length === 0 ? SLATE : ROYAL, fontWeight: 800 }}>
+            {sending ? "Sending…" : "Send Payroll Summaries"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniBarChart({ data, maxVal, color }) {
+  const max = maxVal || Math.max(1, ...data.map((d) => d.value));
+  return (
+    <div className="flex items-end gap-1.5" style={{ height: 90 }}>
+      {data.map((d, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center justify-end" style={{ height: "100%" }}>
+          <div className="w-full rounded-sm" style={{ height: `${max > 0 ? Math.max(2, (d.value / max) * 100) : 2}%`, background: color, minHeight: 2 }} />
+          <div className="mono text-xs mt-1.5" style={{ color: SLATE, fontSize: 9 }}>{d.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReportsModal({ employees, entries, jobSites, timeOffMarks, settings, onClose }) {
+  const [preset, setPreset] = useState("month");
+
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    const today = todayStr();
+    if (preset === "month") return { rangeStart: addDays(today, -29), rangeEnd: today };
+    if (preset === "3months") return { rangeStart: addDays(today, -89), rangeEnd: today };
+    if (preset === "year") return { rangeStart: addDays(today, -364), rangeEnd: today };
+    const oldest = entries.reduce((min, t) => (t.date < min ? t.date : min), today);
+    return { rangeStart: oldest, rangeEnd: today };
+  }, [preset, entries]);
+
+  const rangedEntries = useMemo(() => entries.filter((t) => t.date >= rangeStart && t.date <= rangeEnd), [entries, rangeStart, rangeEnd]);
+
+  // ---- Weekly buckets for cost + overtime trend ----
+  const weekBuckets = useMemo(() => {
+    const buckets = {};
+    for (const t of rangedEntries) {
+      const wk = getWeekStart(t.date, settings.payPeriod && settings.payPeriod.weekStartsOn);
+      if (!buckets[wk]) buckets[wk] = {};
+      buckets[wk][t.employeeId] = (buckets[wk][t.employeeId] || 0) + t.hours;
+    }
+    const weeks = Object.keys(buckets).sort();
+    const otOn = settings.overtime && settings.overtime.enabled;
+    const multiplier = otOn ? settings.overtime.multiplier : 1;
+    return weeks.slice(-8).map((wk) => {
+      let cost = 0, otHours = 0;
+      for (const empId in buckets[wk]) {
+        const emp = employees.find((e) => e.id === empId);
+        if (!emp) continue;
+        const hrs = buckets[wk][empId];
+        let reg = hrs, ot = 0;
+        if (otOn && hrs > 40) { reg = 40; ot = hrs - 40; }
+        cost += reg * emp.rate + ot * emp.rate * multiplier;
+        otHours += ot;
+      }
+      return { label: wk.slice(5).replace("-", "/"), cost, otHours };
+    });
+  }, [rangedEntries, employees, settings]);
+
+  // ---- Hours & cost by job site ----
+  const siteBreakdown = useMemo(() => {
+    const map = {};
+    for (const t of rangedEntries) {
+      const key = t.siteId || "none";
+      if (!map[key]) map[key] = { hours: 0, cost: 0 };
+      const emp = employees.find((e) => e.id === t.employeeId);
+      map[key].hours += t.hours;
+      if (emp) map[key].cost += t.hours * emp.rate;
+    }
+    return Object.entries(map)
+      .map(([siteId, v]) => ({ site: jobSites.find((s) => s.id === siteId), siteId, ...v }))
+      .sort((a, b) => b.hours - a.hours);
+  }, [rangedEntries, employees, jobSites]);
+
+  // ---- Crew comparison ----
+  const crewBreakdown = useMemo(() => {
+    const map = {};
+    for (const t of rangedEntries) map[t.employeeId] = (map[t.employeeId] || 0) + t.hours;
+    return employees
+      .map((e) => ({ employee: e, hours: map[e.id] || 0 }))
+      .filter((r) => r.hours > 0)
+      .sort((a, b) => b.hours - a.hours);
+  }, [rangedEntries, employees]);
+
+  // ---- Attendance reliability (No Clock-In reasons within range) ----
+  const attendance = useMemo(() => {
+    const counts = {};
+    for (const key in timeOffMarks || {}) {
+      const [empId, date] = key.split("|");
+      if (date < rangeStart || date > rangeEnd) continue;
+      if (!counts[empId]) counts[empId] = {};
+      const reason = timeOffMarks[key];
+      counts[empId][reason] = (counts[empId][reason] || 0) + 1;
+    }
+    return employees
+      .map((e) => {
+        const reasons = counts[e.id] || {};
+        const total = Object.values(reasons).reduce((s, n) => s + n, 0);
+        const top = Object.entries(reasons).sort((a, b) => b[1] - a[1])[0];
+        return { employee: e, total, topReason: top ? top[0] : null };
+      })
+      .filter((r) => r.total > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [timeOffMarks, employees, rangeStart, rangeEnd]);
+
+  const totalCost = weekBuckets.reduce((s, w) => s + w.cost, 0);
+  const totalOT = weekBuckets.reduce((s, w) => s + w.otHours, 0);
+
+  function exportCSV() {
+    const rows = [["Date", "Employee", "Job Site", "Hours", "Estimated Pay"]];
+    for (const t of rangedEntries) {
+      const emp = employees.find((e) => e.id === t.employeeId);
+      const site = jobSites.find((s) => s.id === t.siteId);
+      rows.push([t.date, emp ? emp.name : "Unknown", site ? site.name : "", t.hours, emp ? (t.hours * emp.rate).toFixed(2) : ""]);
+    }
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `labourarc-report-${rangeStart}-to-${rangeEnd}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="no-print fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-5" style={{ background: "rgba(0,0,0,0.6)", zIndex: 50 }} onClick={onClose}>
+      <div className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl overflow-hidden" style={{ background: CARD, maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        <div className="stripe-divider" />
+        <div className="px-5 pt-4 pb-3 flex items-start justify-between" style={{ borderBottom: `1px solid ${BORDER}` }}>
+          <div className="brand text-xl" style={{ color: NAVY, fontWeight: 800 }}>Reports</div>
+          <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
+        </div>
+
+        <div className="overflow-y-auto px-5 py-4" style={{ flex: 1 }}>
+          <div className="flex gap-2 mb-4">
+            {[{ id: "month", label: "30 Days" }, { id: "3months", label: "3 Months" }, { id: "year", label: "1 Year" }, { id: "all", label: "All Time" }].map((p) => (
+              <button key={p.id} onClick={() => setPreset(p.id)} className="flex-1 text-xs py-2 rounded-lg" style={{ fontWeight: 700, background: preset === p.id ? ROYAL : BG, color: preset === p.id ? "white" : NAVY }}>{p.label}</button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 mb-5">
+            <div className="flex-1 p-3 rounded-lg text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <div className="brand text-xl" style={{ color: ROYAL, fontWeight: 800 }}>{fmtMoney(totalCost, settings.currency)}</div>
+              <div className="mono text-xs" style={{ color: SLATE }}>LABOR COST</div>
+            </div>
+            <div className="flex-1 p-3 rounded-lg text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <div className="brand text-xl" style={{ color: YELLOW, fontWeight: 800 }}>{totalOT.toFixed(1)}h</div>
+              <div className="mono text-xs" style={{ color: SLATE }}>OVERTIME</div>
+            </div>
+          </div>
+
+          <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>LABOR COST TREND</div>
+          {weekBuckets.length === 0 ? <div className="text-xs mb-4" style={{ color: SLATE }}>No data in this range.</div> : (
+            <div className="p-3 rounded-lg mb-5" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <MiniBarChart data={weekBuckets.map((w) => ({ label: w.label, value: w.cost }))} color={ROYAL} />
+            </div>
+          )}
+
+          {settings.overtime && settings.overtime.enabled && (
+            <>
+              <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>OVERTIME TREND</div>
+              <div className="p-3 rounded-lg mb-5" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+                <MiniBarChart data={weekBuckets.map((w) => ({ label: w.label, value: w.otHours }))} color={YELLOW} />
+              </div>
+            </>
+          )}
+
+          <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>HOURS & COST BY JOB SITE</div>
+          {siteBreakdown.length === 0 ? <div className="text-xs mb-4" style={{ color: SLATE }}>No hours logged in this range.</div> : (
+            <div className="mb-5">
+              {siteBreakdown.map((r) => (
+                <Row key={r.siteId}>
+                  <div style={{ color: NAVY, fontWeight: 600 }}>{r.site ? r.site.name : "No site set"}</div>
+                  <div className="text-right">
+                    <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{fmtMoney(r.cost, settings.currency)}</div>
+                    <div className="mono text-xs" style={{ color: SLATE }}>{r.hours.toFixed(1)}h</div>
+                  </div>
+                </Row>
+              ))}
+            </div>
+          )}
+
+          <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>CREW COMPARISON</div>
+          {crewBreakdown.length === 0 ? <div className="text-xs mb-4" style={{ color: SLATE }}>No hours logged in this range.</div> : (
+            <div className="mb-5">
+              {crewBreakdown.map((r) => (
+                <Row key={r.employee.id}>
+                  <div style={{ color: NAVY, fontWeight: 600 }}>{r.employee.name}</div>
+                  <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{r.hours.toFixed(1)}h</div>
+                </Row>
+              ))}
+            </div>
+          )}
+
+          <div className="brand text-sm mb-2" style={{ color: NAVY, fontWeight: 700, letterSpacing: "0.02em" }}>ATTENDANCE RELIABILITY</div>
+          {attendance.length === 0 ? (
+            <div className="text-xs mb-2" style={{ color: SLATE }}>No missed-day reasons logged in this range.</div>
+          ) : (
+            attendance.map((r) => (
+              <Row key={r.employee.id}>
+                <div style={{ color: NAVY, fontWeight: 600 }}>{r.employee.name}</div>
+                <div className="text-right">
+                  <div className="mono text-sm" style={{ color: YELLOW, fontWeight: 700 }}>{r.total} missed day{r.total > 1 ? "s" : ""}</div>
+                  {r.topReason && <div className="text-xs" style={{ color: SLATE }}>Most common: {r.topReason}</div>}
+                </div>
+              </Row>
+            ))
+          )}
+        </div>
+
+        <div className="px-5 pb-5 pt-2">
+          <button onClick={exportCSV} className="w-full text-sm px-4 py-3 rounded-lg text-white flex items-center justify-center gap-2" style={{ background: ROYAL, fontWeight: 800 }}>
+            <DownloadIcon size={15} />Export CSV
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PayslipModal({ employee, rangeStart, rangeEnd, days, gridHours, dayNotes, settings, entries, onClose }) {
   if (!employee) return null;
   const rows = payslipRows(employee, days, gridHours, dayNotes);
   const calc = calcPay(employee, days, gridHours, settings);
+  const travelMinutes = (entries || []).filter((t) => t.employeeId === employee.id && days.includes(t.date)).reduce((s, t) => s + (t.travelMinutes || 0), 0);
   return (
     <div className="fixed inset-0 flex items-start sm:items-center justify-center p-0 sm:p-5 overflow-y-auto" style={{ background: "rgba(11,30,61,0.55)", zIndex: 50 }}>
       <div className="w-full sm:max-w-lg sm:rounded-2xl my-0 sm:my-8" style={{ background: "white" }}>
@@ -2432,7 +2871,7 @@ function PayslipModal({ employee, rangeStart, rangeEnd, days, gridHours, dayNote
           <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
         </div>
         <div className="print-area">
-          <PayslipDoc employee={employee} rangeStart={rangeStart} rangeEnd={rangeEnd} rows={rows} calc={calc} settings={settings} />
+          <PayslipDoc employee={employee} rangeStart={rangeStart} rangeEnd={rangeEnd} rows={rows} calc={calc} settings={settings} travelMinutes={travelMinutes} />
         </div>
         <div className="no-print flex gap-2 px-5 pb-5">
           <button onClick={() => window.print()} className="text-sm px-4 py-2.5 rounded-lg flex-1 flex items-center justify-center gap-1.5 text-white" style={{ background: ROYAL, fontWeight: 700 }}><PrinterIcon size={15} />Print / Save as PDF</button>
@@ -2479,7 +2918,7 @@ function ShareButton({ employee, rangeStart, rangeEnd, gridHours, settings, full
   async function doShare() {
     const days = dateRange(rangeStart, rangeEnd);
     const calc = calcPay(employee, days, gridHours, settings);
-    const text = `LabourArc Payslip\n${employee.name}\nPeriod: ${rangeStart} to ${rangeEnd}\nHours: ${calc.totalHours.toFixed(2)}h\nGross: ${fmtMoney(calc.gross, settings.currency)}\nNet: ${fmtMoney(calc.net, settings.currency)}\n\nPowered by Barkat Home Creations LTD.`;
+    const text = `LabourArc Payslip\n${employee.name}\nPeriod: ${rangeStart} to ${rangeEnd}\nHours: ${calc.totalHours.toFixed(2)}h\nGross: ${fmtMoney(calc.gross, settings.currency)}\nNet: ${fmtMoney(calc.net, settings.currency)}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: "Payslip — " + employee.name, text });
@@ -2506,7 +2945,7 @@ function Section({ title, children }) {
   );
 }
 
-function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin, onSaveSettings, onSaveSites, allData, onImport, onClose }) {
+function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin, onSaveSettings, onSaveSites, allData, onImport, onClose, onLogout, onContactUs }) {
   const [changing, setChanging] = useState(false);
   const [copied, setCopied] = useState(false);
   const [local, setLocal] = useState(settings);
@@ -2516,8 +2955,31 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
   const [newDedValue, setNewDedValue] = useState("");
   const [pushOn, setPushOn] = useState(() => localStorage.getItem("la_push_employer") === "1");
   const [pushBusy, setPushBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteTyped, setDeleteTyped] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState("");
   const fileRef = useRef(null);
   const logoRef = useRef(null);
+
+  async function handleDeleteAccount() {
+    if (deleteTyped.trim().toUpperCase() !== "DELETE") return;
+    setDeleting(true);
+    setDeleteErr("");
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ workspaceId: workspace.id }),
+      });
+      if (!res.ok) throw new Error("Delete failed (" + res.status + ")");
+      await sb.auth.signOut();
+      window.location.reload();
+    } catch (e) {
+      setDeleteErr(e.message || "Couldn't delete your account — check your connection and try again.");
+      setDeleting(false);
+    }
+  }
 
   function save(next) {
     setLocal(next);
@@ -2609,6 +3071,11 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
           </div>
         )}
 
+        <Section title="Account">
+          <button onClick={onContactUs} className="w-full text-left text-sm px-4 py-3 rounded-lg mb-2" style={{ background: BG, color: NAVY, fontWeight: 600 }}>Contact Us</button>
+          <button onClick={onLogout} className="w-full text-left text-sm px-4 py-3 rounded-lg" style={{ background: BG, color: NAVY, fontWeight: 600 }}>Log Out</button>
+        </Section>
+
         <Section title="Notifications">
           <button onClick={toggleEmployerPush} disabled={pushBusy} className="w-full text-left text-sm px-4 py-3 rounded-lg flex items-center justify-between" style={{ background: pushOn ? "rgba(255,107,26,0.15)" : BG, color: NAVY, fontWeight: 600 }}>
             <span>Push notifications (hours logged, unusual hours)</span>
@@ -2672,24 +3139,101 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
             </button>
           </div>
           {local.breakDeduction.enabled && (
-            <div className="flex gap-2">
-              {[15, 30, 60].map((m) => (
-                <button key={m} onClick={() => save({ ...local, breakDeduction: { ...local.breakDeduction, minutes: m } })} className="flex-1 text-sm py-2 rounded-lg" style={{ fontWeight: 700, background: local.breakDeduction.minutes === m ? ROYAL : BG, color: local.breakDeduction.minutes === m ? "white" : NAVY }}>{m === 60 ? "1 hr" : m + " min"}</button>
-              ))}
+            <div className="mb-2">
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {[15, 30, 45, 60, 75, 90].map((m) => (
+                  <button key={m} onClick={() => save({ ...local, breakDeduction: { ...local.breakDeduction, minutes: m } })} className="text-sm py-2 rounded-lg" style={{ fontWeight: 700, background: local.breakDeduction.minutes === m ? ROYAL : BG, color: local.breakDeduction.minutes === m ? "white" : NAVY }}>{m >= 60 ? (m / 60) + " hr" + (m > 60 ? " " + (m - 60) + "m" : "") : m + " min"}</button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Custom:</div>
+                <input type="number" min="1" value={![15, 30, 45, 60, 75, 90].includes(local.breakDeduction.minutes) ? local.breakDeduction.minutes : ""} onChange={(e) => { const v = Number(e.target.value); if (v > 0) save({ ...local, breakDeduction: { ...local.breakDeduction, minutes: v } }); }} placeholder="e.g. 20" className="w-24 px-2 py-1.5 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
+                <div className="text-xs" style={{ color: SLATE }}>minutes</div>
+              </div>
             </div>
           )}
           <div className="text-xs mt-2" style={{ color: SLATE }}>Subtracted once per day worked, before overtime is calculated.</div>
         </Section>
 
+        <Section title="Time Rounding">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm" style={{ color: NAVY }}>Round clock in/out times</div>
+            <button onClick={() => save({ ...local, rounding: { ...local.rounding, enabled: !local.rounding.enabled } })} className="rounded-full" style={{ width: 42, height: 24, background: local.rounding.enabled ? ROYAL : "#D8DEEA", position: "relative" }}>
+              <div className="rounded-full bg-white" style={{ width: 18, height: 18, position: "absolute", top: 3, left: local.rounding.enabled ? 21 : 3, transition: "left .15s" }} />
+            </button>
+          </div>
+          {local.rounding.enabled ? (
+            <>
+              <div className="flex gap-2">
+                {[5, 10, 15, 30].map((m) => (
+                  <button key={m} onClick={() => save({ ...local, rounding: { ...local.rounding, interval: m } })} className="flex-1 text-sm py-2 rounded-lg" style={{ fontWeight: 700, background: local.rounding.interval === m ? ROYAL : BG, color: local.rounding.interval === m ? "white" : NAVY }}>{m} min</button>
+                ))}
+              </div>
+              <div className="text-xs mt-2" style={{ color: SLATE }}>Hours are rounded to the nearest {local.rounding.interval} minutes — fair to both sides, never consistently favors one.</div>
+            </>
+          ) : (
+            <div className="text-xs" style={{ color: SLATE }}>Off — employees are paid for the exact minutes they worked, no rounding.</div>
+          )}
+        </Section>
+
+        <Section title="Travel Time">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm" style={{ color: NAVY }}>Track travel between job sites</div>
+              <div className="text-xs mt-0.5" style={{ color: SLATE }}>Employees can log travel minutes alongside their hours — paid at the same rate, shown separately on the timesheet and payslip.</div>
+            </div>
+            <button onClick={() => save({ ...local, travelTime: { ...local.travelTime, enabled: !local.travelTime.enabled } })} className="rounded-full flex-shrink-0" style={{ width: 42, height: 24, background: local.travelTime.enabled ? ROYAL : "#D8DEEA", position: "relative", marginLeft: 12 }}>
+              <div className="rounded-full bg-white" style={{ width: 18, height: 18, position: "absolute", top: 3, left: local.travelTime.enabled ? 21 : 3, transition: "left .15s" }} />
+            </button>
+          </div>
+        </Section>
+
+        <Section title="Automatic Payroll Summary">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-sm" style={{ color: NAVY }}>Send payroll summaries automatically</div>
+              <div className="text-xs mt-0.5" style={{ color: SLATE }}>When a pay period closes, send each employee their summary by email/push, and send you a company-wide digest.</div>
+            </div>
+            <button onClick={() => save({ ...local, payrollSummary: { ...local.payrollSummary, enabled: !local.payrollSummary.enabled } })} className="rounded-full flex-shrink-0" style={{ width: 42, height: 24, background: local.payrollSummary.enabled ? ROYAL : "#D8DEEA", position: "relative", marginLeft: 12 }}>
+              <div className="rounded-full bg-white" style={{ width: 18, height: 18, position: "absolute", top: 3, left: local.payrollSummary.enabled ? 21 : 3, transition: "left .15s" }} />
+            </button>
+          </div>
+          {local.payrollSummary.enabled && (
+            <>
+              <div className="text-xs mb-1" style={{ color: SLATE, fontWeight: 600 }}>When a period closes…</div>
+              <div className="flex gap-2 mb-2">
+                <button onClick={() => save({ ...local, payrollSummary: { ...local.payrollSummary, mode: "review" } })} className="flex-1 text-xs py-2.5 rounded-lg" style={{ fontWeight: 700, background: local.payrollSummary.mode === "review" ? ROYAL : BG, color: local.payrollSummary.mode === "review" ? "white" : NAVY }}>Review, then send</button>
+                <button onClick={() => save({ ...local, payrollSummary: { ...local.payrollSummary, mode: "auto" } })} className="flex-1 text-xs py-2.5 rounded-lg" style={{ fontWeight: 700, background: local.payrollSummary.mode === "auto" ? ROYAL : BG, color: local.payrollSummary.mode === "auto" ? "white" : NAVY }}>Send automatically</button>
+              </div>
+              <div className="text-xs" style={{ color: SLATE }}>
+                {local.payrollSummary.mode === "review"
+                  ? "You'll get a notification when a period is ready. Preview it and tap Send when you're happy with the numbers."
+                  : "Summaries go out the moment a pay period closes — no approval step."}
+              </div>
+              <div className="text-xs mt-2" style={{ color: SLATE }}>Only employees with an email on file will receive the email version. Everyone else is simply skipped — no error.</div>
+            </>
+          )}
+        </Section>
+
         <Section title="Pay Period">
-          <div className="flex gap-2 mb-2">
-            {[{ id: "weekly", label: "Weekly" }, { id: "biweekly", label: "Biweekly" }, { id: "semimonthly", label: "Semi-monthly" }].map((p) => (
-              <button key={p.id} onClick={() => save({ ...local, payPeriod: { ...local.payPeriod, type: p.id } })} className="flex-1 text-xs py-2 rounded-lg" style={{ fontWeight: 700, background: local.payPeriod.type === p.id ? ROYAL : BG, color: local.payPeriod.type === p.id ? "white" : NAVY }}>{p.label}</button>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            {[{ id: "weekly", label: "Weekly" }, { id: "biweekly", label: "Bi-Weekly" }, { id: "semimonthly", label: "Semi-Monthly" }, { id: "monthly", label: "Monthly" }].map((p) => (
+              <button key={p.id} onClick={() => save({ ...local, payPeriod: { ...local.payPeriod, type: p.id } })} className="text-xs py-2 rounded-lg" style={{ fontWeight: 700, background: local.payPeriod.type === p.id ? ROYAL : BG, color: local.payPeriod.type === p.id ? "white" : NAVY }}>{p.label}</button>
             ))}
           </div>
+          {local.payPeriod.type === "weekly" && (
+            <div className="mb-2">
+              <div className="text-xs mb-1" style={{ color: SLATE, fontWeight: 600 }}>Begin every</div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[{ v: 1, label: "Mon" }, { v: 2, label: "Tue" }, { v: 3, label: "Wed" }, { v: 4, label: "Thu" }, { v: 5, label: "Fri" }, { v: 6, label: "Sat" }, { v: 0, label: "Sun" }].map((d) => (
+                  <button key={d.v} onClick={() => save({ ...local, payPeriod: { ...local.payPeriod, weekStartsOn: d.v } })} className="text-xs py-2 rounded-lg" style={{ fontWeight: 700, background: (local.payPeriod.weekStartsOn === undefined ? 1 : local.payPeriod.weekStartsOn) === d.v ? ROYAL : BG, color: (local.payPeriod.weekStartsOn === undefined ? 1 : local.payPeriod.weekStartsOn) === d.v ? "white" : NAVY }}>{d.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
           {local.payPeriod.type === "biweekly" && (
             <div>
-              <div className="text-xs mb-1" style={{ color: SLATE, fontWeight: 600 }}>Start date of a recent pay period (used to line up the 2-week cycle)</div>
+              <div className="text-xs mb-1" style={{ color: SLATE, fontWeight: 600 }}>Effective Date — start of a recent pay period, used to line up the 2-week cycle</div>
               <input type="date" value={local.payPeriod.biweeklyAnchor} onChange={(e) => save({ ...local, payPeriod: { ...local.payPeriod, biweeklyAnchor: e.target.value } })} className="w-full px-3 py-2 rounded-lg border text-sm mono" style={{ borderColor: BORDER }} />
             </div>
           )}
@@ -2697,7 +3241,12 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
 
         <Section title="Company Profile (shown on payslips)">
           <input value={local.company.name} onChange={(e) => save({ ...local, company: { ...local.company, name: e.target.value } })} placeholder="Company name" className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER }} />
-          <input value={local.company.address} onChange={(e) => save({ ...local, company: { ...local.company, address: e.target.value } })} placeholder="Address" className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER }} />
+          <input value={local.company.address} onChange={(e) => save({ ...local, company: { ...local.company, address: e.target.value } })} placeholder="Street address" className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER }} />
+          <div className="flex gap-2 mb-2">
+            <input value={local.company.city} onChange={(e) => save({ ...local, company: { ...local.company, city: e.target.value } })} placeholder="City" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+            <input value={local.company.province} onChange={(e) => save({ ...local, company: { ...local.company, province: e.target.value } })} placeholder="Province / State" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+            <input value={local.company.postal} onChange={(e) => save({ ...local, company: { ...local.company, postal: e.target.value } })} placeholder="Postal / ZIP" className="w-28 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+          </div>
           <div className="flex gap-2 mb-2">
             <input value={local.company.phone} onChange={(e) => save({ ...local, company: { ...local.company, phone: e.target.value } })} placeholder="Phone" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
             <input value={local.company.email} onChange={(e) => save({ ...local, company: { ...local.company, email: e.target.value } })} placeholder="Email" className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
@@ -2735,6 +3284,29 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
             <UploadIcon size={15} color={ROYAL} />Import Backup
           </button>
           <input ref={fileRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
+        </Section>
+
+        <Section title="Delete Account">
+          <div className="text-xs mb-3" style={{ color: SLATE }}>
+            Permanently deletes your login, your company, and all crew, timesheet, and payroll data. This cannot be undone. Export a backup first if you want a copy.
+          </div>
+          {!confirmDelete ? (
+            <button onClick={() => setConfirmDelete(true)} className="w-full text-left text-sm px-4 py-3 rounded-lg flex items-center gap-2" style={{ background: BG, color: RED, border: `1px solid ${BORDER}`, fontWeight: 700 }}>
+              <TrashIcon size={15} color={RED} />Delete Account
+            </button>
+          ) : (
+            <div className="p-3 rounded-lg" style={{ background: "rgba(239,83,80,0.08)", border: `1px solid ${RED}` }}>
+              <div className="text-xs mb-2" style={{ color: NAVY, fontWeight: 600 }}>Type DELETE to confirm — this immediately erases everything.</div>
+              <input value={deleteTyped} onChange={(e) => setDeleteTyped(e.target.value)} placeholder="DELETE" className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER, background: CARD, color: NAVY }} />
+              {deleteErr && <div className="text-xs mb-2" style={{ color: RED }}>{deleteErr}</div>}
+              <div className="flex gap-2">
+                <button onClick={handleDeleteAccount} disabled={deleteTyped.trim().toUpperCase() !== "DELETE" || deleting} className="flex-1 text-sm px-4 py-2 rounded-lg text-white" style={{ background: deleteTyped.trim().toUpperCase() === "DELETE" && !deleting ? RED : SLATE, fontWeight: 700 }}>
+                  {deleting ? "Deleting…" : "Permanently Delete"}
+                </button>
+                <button onClick={() => { setConfirmDelete(false); setDeleteTyped(""); setDeleteErr(""); }} className="text-sm px-4 py-2 rounded-lg" style={{ background: CARD, color: NAVY, border: `1px solid ${BORDER}`, fontWeight: 600 }}>Cancel</button>
+              </div>
+            </div>
+          )}
         </Section>
 
         <button onClick={onClose} className="w-full text-sm px-4 py-2.5 rounded-lg mt-2" style={{ background: NAVY, color: "white", fontWeight: 700 }}>Done</button>
