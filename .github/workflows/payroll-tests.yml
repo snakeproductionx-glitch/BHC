@@ -1,0 +1,16 @@
+name: Payroll Math Checks
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test-payroll-math:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run payroll calculation tests
+        run: node payroll-tests.js
