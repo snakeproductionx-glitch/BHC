@@ -14,6 +14,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="payroll-logic.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
   body { margin: 0; background: #14171A; }
@@ -58,27 +59,7 @@ const RED = "#EF5350";
 const YELLOW = "#FFC93C";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-function todayStr() { return new Date().toISOString().slice(0, 10); }
-function addDays(dateStr, n) {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-function getMonday(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-function getWeekStart(dateStr, weekStartsOn) {
-  const wso = weekStartsOn === undefined || weekStartsOn === null ? 1 : weekStartsOn; // 0=Sun..6=Sat, default Monday
-  const d = new Date(dateStr + "T00:00:00");
-  const day = d.getDay();
-  const diff = (day - wso + 7) % 7;
-  d.setDate(d.getDate() - diff);
-  return d.toISOString().slice(0, 10);
-}
+// todayStr, toLocalDateStr, addDays, getMonday, getWeekStart now come from payroll-logic.js
 function fmtDate(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -268,6 +249,109 @@ const PrinterIcon = (p) => <Icon {...p}><path d="M6 9V3h12v6"/><rect x="4" y="9"
 const NoteIcon = (p) => <Icon {...p}><path d="M4 4h13l3 3v13H4z"/><path d="M17 4v3h3"/><path d="M8 12h8M8 16h5"/></Icon>;
 const XIcon = (p) => <Icon {...p}><path d="M6 6l12 12M18 6L6 18"/></Icon>;
 const TrashIcon = (p) => <Icon {...p}><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z"/></Icon>;
+
+function TimezonePicker({ value, onChange }) {
+  const detected = useMemo(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; }
+  }, []);
+
+  // Figure out which country the current/detected value belongs to, so the picker opens sensibly
+  function countryForTz(tz) {
+    for (const c in TIMEZONE_DATA) {
+      if (TIMEZONE_DATA[c].some((x) => x.tz === tz)) return c;
+    }
+    return "";
+  }
+
+  const [country, setCountry] = useState(() => countryForTz(value || detected) || "");
+  const [showAll, setShowAll] = useState(() => !!value && !countryForTz(value));
+  const [search, setSearch] = useState("");
+
+  const allTimezones = useMemo(() => {
+    try { return Intl.supportedValuesOf("timeZone"); } catch { return []; }
+  }, []);
+  const filteredAll = search.trim() ? allTimezones.filter((t) => t.toLowerCase().includes(search.trim().toLowerCase())) : allTimezones;
+
+  return (
+    <div>
+      {!showAll ? (
+        <>
+          <div className="mono text-xs mb-1" style={{ color: SLATE, fontWeight: 600 }}>COUNTRY</div>
+          <select
+            value={country}
+            onChange={(e) => { setCountry(e.target.value); onChange(""); }}
+            className="w-full px-3 py-2 rounded-lg border text-sm mb-2"
+            style={{ borderColor: BORDER }}
+          >
+            <option value="">Select your country…</option>
+            {Object.keys(TIMEZONE_DATA).map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          {country && (
+            <>
+              <div className="mono text-xs mb-1" style={{ color: SLATE, fontWeight: 600 }}>NEAREST CITY</div>
+              <select
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border text-sm mb-2"
+                style={{ borderColor: BORDER }}
+              >
+                <option value="">Select the closest city…</option>
+                {TIMEZONE_DATA[country].map((c) => <option key={c.tz} value={c.tz}>{c.city}</option>)}
+              </select>
+              <div className="text-xs mb-2" style={{ color: SLATE }}>Pick whichever city is closest to your area — it just needs to match your time zone.</div>
+            </>
+          )}
+
+          <button onClick={() => setShowAll(true)} className="text-xs" style={{ color: ROYAL, fontWeight: 600 }}>My country isn't listed — search all time zones</button>
+        </>
+      ) : (
+        <>
+          <div className="mono text-xs mb-1" style={{ color: SLATE, fontWeight: 600 }}>SEARCH TIME ZONE</div>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="e.g. Berlin, Tokyo, Cairo…" className="w-full px-3 py-2 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER }} />
+          <select value={value} onChange={(e) => onChange(e.target.value)} size={6} className="w-full px-2 py-1 rounded-lg border text-sm mb-2" style={{ borderColor: BORDER }}>
+            {filteredAll.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+          </select>
+          <button onClick={() => { setShowAll(false); setSearch(""); }} className="text-xs" style={{ color: ROYAL, fontWeight: 600 }}>Back to country list</button>
+        </>
+      )}
+    </div>
+  );
+}
+const TIMEZONE_DATA = {
+  Canada: [
+    { city: "St. John's", tz: "America/St_Johns" },
+    { city: "Halifax", tz: "America/Halifax" },
+    { city: "Toronto", tz: "America/Toronto" },
+    { city: "Winnipeg", tz: "America/Winnipeg" },
+    { city: "Regina", tz: "America/Regina" },
+    { city: "Edmonton (Calgary, Alberta)", tz: "America/Edmonton" },
+    { city: "Vancouver", tz: "America/Vancouver" },
+  ],
+  "United States": [
+    { city: "New York", tz: "America/New_York" },
+    { city: "Chicago", tz: "America/Chicago" },
+    { city: "Denver", tz: "America/Denver" },
+    { city: "Phoenix (no DST)", tz: "America/Phoenix" },
+    { city: "Los Angeles", tz: "America/Los_Angeles" },
+    { city: "Anchorage", tz: "America/Anchorage" },
+    { city: "Honolulu", tz: "Pacific/Honolulu" },
+  ],
+  "United Kingdom": [{ city: "London", tz: "Europe/London" }],
+  Australia: [
+    { city: "Perth", tz: "Australia/Perth" },
+    { city: "Adelaide", tz: "Australia/Adelaide" },
+    { city: "Sydney", tz: "Australia/Sydney" },
+    { city: "Brisbane", tz: "Australia/Brisbane" },
+  ],
+  India: [{ city: "New Delhi / Mumbai", tz: "Asia/Kolkata" }],
+  Mexico: [
+    { city: "Mexico City", tz: "America/Mexico_City" },
+    { city: "Tijuana", tz: "America/Tijuana" },
+  ],
+  Ireland: [{ city: "Dublin", tz: "Europe/Dublin" }],
+  "New Zealand": [{ city: "Auckland", tz: "Pacific/Auckland" }],
+};
 const HistoryIcon = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></Icon>;
 const UndoIcon = (p) => <Icon {...p}><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 0 1 0 10h-1"/></Icon>;
 const RestoreIcon = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></Icon>;
@@ -291,14 +375,26 @@ const DEFAULT_SETTINGS = {
   pinLength: 6,
   currency: "USD",
   overtime: { enabled: false, multiplier: 1.5, threshold: "weekly" }, // threshold: 'weekly' | 'daily'
-  payPeriod: { type: "weekly", weekStartsOn: 1, biweeklyAnchor: todayStr() }, // type: 'weekly'|'biweekly'|'semimonthly'
+  payPeriod: { type: "weekly", weekStartsOn: 1, biweeklyAnchor: todayStr() },
+  timezone: "", // IANA timezone e.g. "America/Edmonton" — blank until set during onboarding, required // type: 'weekly'|'biweekly'|'semimonthly'
   breakDeduction: { enabled: false, minutes: 30 }, // subtracted once per day worked
   rounding: { enabled: false, interval: 15 }, // interval in minutes; rounds to nearest. When disabled, exact minutes worked are used.
   noClockInReasons: ["Sick", "Vacation", "Day Off", "Weather", "Other"],
   travelTime: { enabled: false }, // when enabled, employees can log travel minutes alongside worked hours; paid at the same rate and shown separately
   payrollSummary: { enabled: false, mode: "review" }, // mode: "review" (employer approves before sending) or "auto" (sends the moment a pay period closes)
   company: { name: "", address: "", city: "", province: "", postal: "", phone: "", email: "", logo: null },
-  deductions: [], // [{id, label, type: 'percent'|'flat', value}]
+  deductions: [], // [{id, label, type: 'percent'|'flat', value}] — custom/other deductions
+  namedDeductions: {
+    // Each is optional and blank by default. Blank = not shown anywhere on the payslip.
+    // Employer fills in whatever applies to their own province/state — LabourArc doesn't assume a rate.
+    incomeTax: { type: "percent", value: "" },
+    ei: { type: "percent", value: "" },
+    cpp: { type: "percent", value: "" },
+    pension: { type: "percent", value: "" },
+    vacationPay: { type: "percent", value: "" },
+    healthBenefits: { type: "flat", value: "" },
+    unionDues: { type: "flat", value: "" },
+  },
 };
 
 function App() {
@@ -332,6 +428,12 @@ function App() {
   const [empWorkspaceId, setEmpWorkspaceId] = useState(() => localStorage.getItem("wp_emp_ws_id") || null);
   const [empWorkspaceName, setEmpWorkspaceName] = useState(() => localStorage.getItem("wp_emp_ws_name") || "");
   const [myEmployeeId, setMyEmployeeId] = useState(() => localStorage.getItem("wp_myId") || null);
+  const [myPin, setMyPin] = useState(() => {
+    const id = localStorage.getItem("wp_myId");
+    return id ? localStorage.getItem("wp_pin_" + id) || null : null;
+  });
+  const [myEmployeeData, setMyEmployeeData] = useState(null); // employee's own sanitized record, from the server, once verified
+  const [empDirectory, setEmpDirectory] = useState([]); // name+id only, for the picker screen — never contains PINs
   const [myUnlocked, setMyUnlocked] = useState(() => {
     const id = localStorage.getItem("wp_myId");
     return id ? localStorage.getItem("wp_unlocked_" + id) === "1" : false;
@@ -358,6 +460,19 @@ function App() {
   async function refreshAll() {
     if (!activeWorkspaceId) return;
     try {
+      if (role === "employee") {
+        if (!myEmployeeId || !myPin) return; // not verified yet — nothing to load
+        const result = await callEmployeeData("getAll");
+        const map = result.data || {};
+        setEmployees(map.employees || []);
+        setEntries(map.entries || []);
+        setDayNotes(map.dayNotes || {});
+        setJobSites(map.jobSites || []);
+        setActiveShifts(map.activeShifts || {});
+        setTimeOffMarks(map.timeOffMarks || {});
+        setSettings({ ...DEFAULT_SETTINGS, ...(map.settings || {}) });
+        return;
+      }
       const map = await kvGetAll(activeWorkspaceId);
       setEmployees(map.employees || []);
       setEntries(map.entries || []);
@@ -376,19 +491,42 @@ function App() {
     }
   }
 
+  // Employee name picker — a lightweight, name-only fetch that works before any PIN is entered.
+  useEffect(() => {
+    if (role !== "employee" || !empWorkspaceId || myEmployeeId) return;
+    (async () => {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/employee-directory`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+          body: JSON.stringify({ workspaceId: empWorkspaceId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        setEmpDirectory((data && data.employees) || []);
+      } catch {
+        setEmpDirectory([]);
+      }
+    })();
+  }, [role, empWorkspaceId, myEmployeeId]);
+
   useEffect(() => {
     if (!activeWorkspaceId) { setLoaded(role !== "employer" && role !== "employee"); return; }
+    if (role === "employee" && (!myEmployeeId || !myPin)) { setLoaded(false); return; } // wait for PIN verification before loading anything
     setLoaded(false);
     refreshAll().finally(() => setLoaded(true));
     const iv = setInterval(() => { if (!modalOpenRef.current) refreshAll(); }, 15000);
     return () => clearInterval(iv);
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, role, myEmployeeId, myPin]);
 
   async function persist(key, value, setter) {
     setter(value);
     setSaving(true);
     try {
-      await kvSet(activeWorkspaceId, key, value);
+      if (role === "employee") {
+        await callEmployeeData("set", { key, value });
+      } else {
+        await kvSet(activeWorkspaceId, key, value);
+      }
     } catch {
       setError("Couldn't save — check your connection and try again.");
     } finally {
@@ -404,9 +542,12 @@ function App() {
     setMyEmployeeId(id);
     if (id) {
       localStorage.setItem("wp_myId", id);
-      setMyUnlocked(localStorage.getItem("wp_unlocked_" + id) === "1");
+      const rememberedPin = localStorage.getItem("wp_pin_" + id);
+      setMyPin(rememberedPin || null);
+      setMyUnlocked(!!rememberedPin);
     } else {
       localStorage.removeItem("wp_myId");
+      setMyPin(null);
       setMyUnlocked(false);
     }
   }
@@ -414,9 +555,20 @@ function App() {
     localStorage.setItem("wp_employer_unlocked", "1");
     setEmployerUnlocked(true);
   }
-  function unlockEmployeeRemember(id) {
-    localStorage.setItem("wp_unlocked_" + id, "1");
+  function unlockEmployeeRemember(id, pin) {
+    localStorage.setItem("wp_pin_" + id, pin);
+    setMyPin(pin);
     setMyUnlocked(true);
+  }
+  async function callEmployeeData(action, extra = {}) {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/employee-data`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify({ workspaceId: empWorkspaceId, employeeId: myEmployeeId, pin: myPin, action, ...extra }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Request failed");
+    return data;
   }
   function switchUser() {
     if (role === "employer") {
@@ -437,7 +589,7 @@ function App() {
     localStorage.setItem("wp_emp_ws_name", ws.name);
   }
 
-  const showLoading = role === "employer" ? (!authChecked || (session && !workspaceChecked) || (workspace && !loaded)) : (role === "employee" && empWorkspaceId && !loaded);
+  const showLoading = role === "employer" ? (!authChecked || (session && !workspaceChecked) || (workspace && !loaded)) : (role === "employee" && myEmployeeId && myPin && !loaded);
 
   if (showLoading) {
     return (
@@ -466,6 +618,11 @@ function App() {
           <AccountPendingDeletionScreen
             scheduledFor={accountDeletion.scheduledFor}
             onRestore={() => persist("accountDeletion", null, setAccountDeletion)}
+            onLogout={switchUser}
+          />
+        ) : !settings.timezone ? (
+          <TimezoneSetupScreen
+            onSave={(tz) => persist("settings", { ...settings, timezone: tz }, setSettings)}
             onLogout={switchUser}
           />
         ) : !employerPinReady(employerPin, employerUnlocked) ? (
@@ -499,29 +656,59 @@ function App() {
         !empWorkspaceId ? (
           <CompanyCodeScreen onJoined={joinWorkspace} onBack={() => setRolePersist(null)} />
         ) : !myEmployeeId ? (
-          <EmployeePicker employees={employees} companyName={empWorkspaceName} onPick={setMyIdPersist} onBack={() => { setEmpWorkspaceId(null); localStorage.removeItem("wp_emp_ws_id"); setRolePersist(null); }} />
+          <EmployeePicker employees={empDirectory} companyName={empWorkspaceName} onPick={setMyIdPersist} onBack={() => { setEmpWorkspaceId(null); localStorage.removeItem("wp_emp_ws_id"); setRolePersist(null); }} />
         ) : (
           (() => {
-            const me = employees.find((e) => e.id === myEmployeeId);
-            if (!me) return <EmployeePicker employees={employees} companyName={empWorkspaceName} onPick={setMyIdPersist} onBack={() => { setMyIdPersist(null); setRolePersist(null); }} />;
-            if (!me.pin) {
+            const dirMe = empDirectory.find((e) => e.id === myEmployeeId);
+            if (!dirMe) return <EmployeePicker employees={empDirectory} companyName={empWorkspaceName} onPick={setMyIdPersist} onBack={() => { setMyIdPersist(null); setRolePersist(null); }} />;
+            if (!dirMe.hasPin) {
               return (
                 <CreatePin
-                  title={`Create Your PIN, ${me.name}`}
+                  title={`Create Your PIN, ${dirMe.name}`}
                   subtitle="Only you will use this to see your hours and payroll."
-                  pinLength={settings.pinLength}
-                  onDone={(pin) => {
-                    const next = employees.map((e) => (e.id === me.id ? { ...e, pin } : e));
-                    persist("employees", next, setEmployees);
-                    unlockEmployeeRemember(me.id);
+                  pinLength={6}
+                  onDone={async (pin) => {
+                    try {
+                      await fetch(`${SUPABASE_URL}/functions/v1/employee-data`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+                        body: JSON.stringify({ workspaceId: empWorkspaceId, employeeId: myEmployeeId, action: "setPin", newPin: pin }),
+                      });
+                      unlockEmployeeRemember(myEmployeeId, pin);
+                      setEmpDirectory((prev) => prev.map((e) => (e.id === myEmployeeId ? { ...e, hasPin: true } : e)));
+                    } catch {
+                      setError("Couldn't set your PIN — check your connection and try again.");
+                    }
                   }}
                   onBack={() => setMyIdPersist(null)}
                 />
               );
             }
-            if (!myUnlocked) {
-              return <EnterPin title={`Welcome back, ${me.name}`} expected={me.pin} pinLength={settings.pinLength} onSuccess={() => unlockEmployeeRemember(me.id)} onBack={() => setMyIdPersist(null)} />;
+            if (!myUnlocked || !myPin) {
+              return (
+                <EnterPin
+                  title={`Welcome back, ${dirMe.name}`}
+                  pinLength={6}
+                  onVerify={async (pin) => {
+                    const res = await fetch(`${SUPABASE_URL}/functions/v1/employee-data`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+                      body: JSON.stringify({ workspaceId: empWorkspaceId, employeeId: myEmployeeId, pin, action: "getAll" }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || "Incorrect PIN");
+                    unlockEmployeeRemember(myEmployeeId, pin);
+                  }}
+                  onSuccess={() => {
+                    // Biometric path: trust the already-remembered pin cached on this device
+                    const cached = localStorage.getItem("wp_pin_" + myEmployeeId);
+                    if (cached) unlockEmployeeRemember(myEmployeeId, cached);
+                  }}
+                  onBack={() => setMyIdPersist(null)}
+                />
+              );
             }
+            const me = employees.find((e) => e.id === myEmployeeId) || { id: myEmployeeId, name: dirMe.name };
             return (
               <EmployeeApp
                 me={me} entries={entries} dayNotes={dayNotes} jobSites={jobSites} settings={settings} workspaceId={activeWorkspaceId} activeShifts={activeShifts} setActiveShifts={setActiveShifts}
@@ -609,6 +796,37 @@ function AccountPendingDeletionScreen({ scheduledFor, onRestore, onLogout }) {
             {restoring ? "Restoring…" : "Restore My Account"}
           </button>
           <div className="text-xs" style={{ color: SLATE }}>Restoring cancels the deletion and returns everything to normal — nothing has been erased yet.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimezoneSetupScreen({ onSave, onLogout }) {
+  const [timezone, setTimezone] = useState(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!timezone) return;
+    setSaving(true);
+    await onSave(timezone);
+    setSaving(false);
+  }
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <div className="stripe-divider" />
+      <BrandHeader right={<button onClick={onLogout} className="text-xs" style={{ color: SLATE, fontWeight: 600 }}>Log Out</button>} />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-xs">
+          <div className="brand text-xl mb-2 text-center" style={{ color: NAVY, fontWeight: 800 }}>One Quick Thing</div>
+          <div className="text-sm text-center mb-5" style={{ color: SLATE }}>Select your time zone so pay periods and payroll timing stay accurate. This only needs to be set once.</div>
+          <div className="mb-4 p-3 rounded-lg" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+            <TimezonePicker value={timezone} onChange={setTimezone} />
+          </div>
+          <button onClick={handleSave} disabled={!timezone || saving} className="w-full py-3 rounded-lg text-white text-sm" style={{ background: !timezone || saving ? SLATE : ROYAL, fontWeight: 700 }}>
+            {saving ? "Saving…" : "Save & Continue"}
+          </button>
         </div>
       </div>
     </div>
@@ -709,6 +927,7 @@ function EmployerAuthScreen({ onBack }) {
 
 function CreateWorkspaceScreen({ session, onCreated, onBack }) {
   const [name, setName] = useState("");
+  const [timezone, setTimezone] = useState(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -721,12 +940,17 @@ function CreateWorkspaceScreen({ session, onCreated, onBack }) {
 
   async function create() {
     if (!name.trim()) { setErr("Enter your company name."); return; }
+    if (!timezone) { setErr("Select your time zone — this keeps pay periods and payroll timing accurate."); return; }
     setBusy(true); setErr("");
     let attempts = 0;
     while (attempts < 5) {
       const code = genCode();
       const { data, error } = await sb.from("workspaces").insert({ owner_id: session.user.id, name: name.trim(), company_code: code }).select("id,name,company_code").single();
-      if (!error) { onCreated(data); return; }
+      if (!error) {
+        try { await kvSet(data.id, "settings", { ...DEFAULT_SETTINGS, timezone }); } catch {}
+        onCreated(data);
+        return;
+      }
       if (!String(error.message).includes("duplicate")) { setErr(error.message); setBusy(false); return; }
       attempts++;
     }
@@ -743,6 +967,9 @@ function CreateWorkspaceScreen({ session, onCreated, onBack }) {
           <div className="text-sm text-center mb-4" style={{ color: SLATE }}>This creates your own private LabourArc workspace.</div>
           {err && <div className="text-xs mb-3 text-center" style={{ color: RED }}>{err}</div>}
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Company name" className="w-full px-3 py-3 rounded-lg border text-sm mb-4" style={{ borderColor: BORDER }} />
+          <div className="mb-4 p-3 rounded-lg" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+            <TimezonePicker value={timezone} onChange={setTimezone} />
+          </div>
           <button onClick={create} disabled={busy} className="w-full py-3 rounded-lg text-white text-sm" style={{ background: ROYAL, fontWeight: 700 }}>
             {busy ? "Creating…" : "Create Workspace"}
           </button>
@@ -864,19 +1091,30 @@ function CreatePin({ title, subtitle, onDone, onBack, inline, pinLength = 6 }) {
   );
 }
 
-function EnterPin({ title, expected, onSuccess, onBack, pinLength = 6 }) {
+function EnterPin({ title, expected, onVerify, onSuccess, onBack, pinLength = 6 }) {
   const [val, setVal] = useState("");
   const [err, setErr] = useState("");
   const [bioAvailable, setBioAvailable] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => { biometricAvailable().then(setBioAvailable); }, []);
 
-  function handleChange(v) {
+  async function handleChange(v) {
     const digits = v.replace(/\D/g, "").slice(0, pinLength);
     setVal(digits);
     setErr("");
     if (digits.length === pinLength) {
-      if (digits === expected) {
+      if (onVerify) {
+        setChecking(true);
+        try {
+          await onVerify(digits);
+        } catch (e) {
+          setErr(e.message === "Incorrect PIN" ? "Incorrect PIN — try again." : "Couldn't verify — check your connection.");
+          setTimeout(() => setVal(""), 400);
+        } finally {
+          setChecking(false);
+        }
+      } else if (digits === expected) {
         onSuccess();
       } else {
         setErr("Incorrect PIN — try again.");
@@ -898,6 +1136,7 @@ function EnterPin({ title, expected, onSuccess, onBack, pinLength = 6 }) {
         <LockIcon size={28} color={ROYAL} />
         <div className="brand text-xl mt-3 mb-4 text-center" style={{ color: NAVY, fontWeight: 800 }}>{title}</div>
         {err && <div className="text-xs mb-3" style={{ color: RED }}>{err}</div>}
+        {checking && <div className="text-xs mb-3" style={{ color: SLATE }}>Checking…</div>}
         <PinDots value={val} length={pinLength} />
         <input
           autoFocus
@@ -1610,19 +1849,7 @@ function EmployerApp({ employees, entries, dayNotes, paidRanges, deletedLog, emp
 function roundToHalfHour(hoursDecimal) {
   return Math.round(hoursDecimal * 2) / 2;
 }
-function roundHoursForSettings(hoursDecimal, settings) {
-  const r = settings && settings.rounding;
-  if (!r || !r.enabled) return Math.round(hoursDecimal * 100) / 100; // exact, just clean float noise
-  const intervalHrs = (r.interval || 15) / 60;
-  return Math.round(hoursDecimal / intervalHrs) * intervalHrs;
-}
-function minutesBetween(start, end) {
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  let mins = (eh * 60 + em) - (sh * 60 + sm);
-  if (mins < 0) mins += 24 * 60; // handle overnight shifts
-  return mins;
-}
+// roundHoursForSettings, minutesBetween now come from payroll-logic.js
 
 function EmployeeApp({ me, entries, dayNotes, jobSites, settings, workspaceId, persist, allEntries, switchUser, activeShifts, setActiveShifts, setEntries, setDayNotes, timeOffMarks, setTimeOffMarks }) {
   const [tab, setTab] = useState("log");
@@ -1927,42 +2154,7 @@ function SearchBar({ value, onChange, placeholder }) {
   );
 }
 
-function toISO(d) { return d.toISOString().slice(0, 10); }
-
-function getPayPeriodRange(payPeriod, which) {
-  const t = todayStr();
-  if (payPeriod.type === "semimonthly") {
-    const d = new Date(t + "T00:00:00");
-    const day = d.getDate();
-    let start, end;
-    if (which === "current") {
-      if (day <= 15) { start = new Date(d.getFullYear(), d.getMonth(), 1); end = new Date(d.getFullYear(), d.getMonth(), 15); }
-      else { start = new Date(d.getFullYear(), d.getMonth(), 16); end = new Date(d.getFullYear(), d.getMonth() + 1, 0); }
-    } else {
-      if (day <= 15) { end = new Date(d.getFullYear(), d.getMonth(), 0); start = new Date(end.getFullYear(), end.getMonth(), 16); }
-      else { start = new Date(d.getFullYear(), d.getMonth(), 1); end = new Date(d.getFullYear(), d.getMonth(), 15); }
-    }
-    return { start: toISO(start), end: toISO(end) };
-  }
-  if (payPeriod.type === "biweekly") {
-    const anchor = payPeriod.biweeklyAnchor || t;
-    const diffDays = Math.floor((new Date(t + "T00:00:00") - new Date(anchor + "T00:00:00")) / 86400000);
-    const periodIndex = Math.floor(diffDays / 14);
-    const idx = which === "current" ? periodIndex : periodIndex - 1;
-    const start = addDays(anchor, idx * 14);
-    return { start, end: addDays(start, 13) };
-  }
-  if (payPeriod.type === "monthly") {
-    const d = new Date(t + "T00:00:00");
-    if (which === "current") {
-      return { start: toISO(new Date(d.getFullYear(), d.getMonth(), 1)), end: toISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)) };
-    }
-    return { start: toISO(new Date(d.getFullYear(), d.getMonth() - 1, 1)), end: toISO(new Date(d.getFullYear(), d.getMonth(), 0)) };
-  }
-  const weekStart = getWeekStart(t, payPeriod.weekStartsOn);
-  const start = which === "current" ? weekStart : addDays(weekStart, -7);
-  return { start, end: addDays(start, 6) };
-}
+// toISO, getPayPeriodRange now come from payroll-logic.js
 
 function DateRangeBar({ rangeStart, rangeEnd, setRangeStart, setRangeEnd, setPreset, settings }) {
   function goPeriod(which) {
@@ -2479,59 +2671,7 @@ function exportPayrollExcel(empRangeTotals, rangeStart, rangeEnd, settings, work
   XLSX.writeFile(wb, name);
 }
 
-function applyBreakDeduction(dayHours, settings) {
-  if (!dayHours || !settings.breakDeduction || !settings.breakDeduction.enabled) return dayHours;
-  const reduced = dayHours - settings.breakDeduction.minutes / 60;
-  return Math.max(0, reduced);
-}
-
-// Given a per-day hours map for one employee across a date range, returns
-// { totalHours, regularHours, overtimeHours } after break deduction + overtime rules.
-function calcEmployeeHours(employeeId, days, gridHours, settings) {
-  // Apply break deduction per worked day first
-  const dayValues = days.map((d) => applyBreakDeduction(gridHours[employeeId + "|" + d] || 0, settings));
-  const totalHours = dayValues.reduce((s, h) => s + h, 0);
-
-  if (!settings.overtime || !settings.overtime.enabled) {
-    return { totalHours, regularHours: totalHours, overtimeHours: 0 };
-  }
-
-  if (settings.overtime.threshold === "daily") {
-    let regular = 0, overtime = 0;
-    for (const h of dayValues) {
-      regular += Math.min(h, 8);
-      overtime += Math.max(0, h - 8);
-    }
-    return { totalHours, regularHours: regular, overtimeHours: overtime };
-  }
-
-  // weekly: group by ISO week (Monday start)
-  const weekTotals = {};
-  days.forEach((d, i) => {
-    const wk = getMonday(d);
-    weekTotals[wk] = (weekTotals[wk] || 0) + dayValues[i];
-  });
-  let regular = 0, overtime = 0;
-  Object.values(weekTotals).forEach((wkHours) => {
-    regular += Math.min(wkHours, 40);
-    overtime += Math.max(0, wkHours - 40);
-  });
-  return { totalHours, regularHours: regular, overtimeHours: overtime };
-}
-
-// Full pay breakdown for one employee over a range: gross, itemized deductions, net.
-function calcPay(employee, days, gridHours, settings) {
-  const { totalHours, regularHours, overtimeHours } = calcEmployeeHours(employee.id, days, gridHours, settings);
-  const multiplier = settings.overtime && settings.overtime.enabled ? settings.overtime.multiplier : 1;
-  const gross = regularHours * employee.rate + overtimeHours * employee.rate * multiplier;
-  const deductionLines = (settings.deductions || []).map((d) => ({
-    label: d.label,
-    amount: d.type === "percent" ? gross * (d.value / 100) : d.value,
-  }));
-  const totalDeductions = deductionLines.reduce((s, d) => s + d.amount, 0);
-  const net = Math.max(0, gross - totalDeductions);
-  return { totalHours, regularHours, overtimeHours, gross, deductionLines, totalDeductions, net };
-}
+// applyBreakDeduction, calcEmployeeHours, NAMED_DEDUCTION_LABELS, calcPay now come from payroll-logic.js
 
 function payslipRows(employee, days, gridHours, dayNotes) {
   return days.map((d) => ({ date: d, hours: gridHours[employee.id + "|" + d] || 0, note: dayNotes[employee.id + "|" + d] || "" })).filter((r) => r.hours > 0 || r.note);
@@ -2608,6 +2748,7 @@ function PayslipDoc({ employee, rangeStart, rangeEnd, rows, calc, settings, trav
 function PayrollReviewModal({ employees, entries, settings, workspace, onSent, onClose }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
 
   const period = getPayPeriodRange(settings.payPeriod, "previous");
   const days = useMemo(() => dateRange(period.start, period.end), [period.start, period.end]);
@@ -2630,8 +2771,11 @@ function PayrollReviewModal({ employees, entries, settings, workspace, onSent, o
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "apikey": SUPABASE_ANON_KEY },
         body: JSON.stringify({ workspaceId: workspace.id, periodStart: period.start, periodEnd: period.end }),
       });
-      if (!res.ok) throw new Error("Send failed (" + res.status + ")");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Send failed (" + res.status + ")");
+      // Mark the period as sent either way — hours were still processed, this is about email delivery specifically
       onSent(period.end);
+      setResult(data);
     } catch (e) {
       setError(e.message || "Couldn't send — check your connection and try again.");
     } finally {
@@ -2645,39 +2789,73 @@ function PayrollReviewModal({ employees, entries, settings, workspace, onSent, o
         <div className="stripe-divider" />
         <div className="px-5 pt-4 pb-3 flex items-start justify-between" style={{ borderBottom: `1px solid ${BORDER}` }}>
           <div>
-            <div className="brand text-xl" style={{ color: NAVY, fontWeight: 800 }}>Review Payroll</div>
+            <div className="brand text-xl" style={{ color: NAVY, fontWeight: 800 }}>{result ? "Send Results" : "Review Payroll"}</div>
             <div className="mono text-xs mt-1" style={{ color: SLATE }}>{fmtDateWeekday(period.start)} – {fmtDateWeekday(period.end)}</div>
           </div>
           <button onClick={onClose} style={{ color: SLATE }}><XIcon size={18} /></button>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4" style={{ flex: 1 }}>
-          <div className="p-4 rounded-lg mb-4 text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
-            <div className="brand text-3xl" style={{ color: ROYAL, fontWeight: 800 }}>{fmtMoney(total, settings.currency)}</div>
-            <div className="mono text-xs mt-1" style={{ color: SLATE }}>TOTAL PAYROLL · {rows.length} EMPLOYEES</div>
+        {result ? (
+          <div className="overflow-y-auto px-5 py-4" style={{ flex: 1 }}>
+            <div className="p-4 rounded-lg mb-4" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: GREEN, display: "inline-block" }} />
+                <span className="text-sm" style={{ color: NAVY, fontWeight: 700 }}>{result.emailsSent} payslip email{result.emailsSent === 1 ? "" : "s"} sent successfully</span>
+              </div>
+              {result.skippedNoEmail > 0 && <div className="text-xs mt-1" style={{ color: SLATE }}>{result.skippedNoEmail} employee(s) skipped — no email on file</div>}
+            </div>
+
+            {result.emailFailures && result.emailFailures.length > 0 && (
+              <div className="p-4 rounded-lg mb-4" style={{ background: "rgba(239,83,80,0.08)", border: `1px solid ${RED}` }}>
+                <div className="text-sm mb-2" style={{ color: RED, fontWeight: 700 }}>{result.emailFailures.length} email{result.emailFailures.length === 1 ? "" : "s"} failed to send</div>
+                {result.emailFailures.map((f, i) => (
+                  <div key={i} className="text-xs mb-1" style={{ color: NAVY }}>
+                    <strong>{f.employee}</strong> — <span style={{ color: SLATE }}>{f.error}</span>
+                  </div>
+                ))}
+                <div className="text-xs mt-2" style={{ color: SLATE }}>Double check their email address on file, then try sending again — hours and pay are already recorded either way.</div>
+              </div>
+            )}
+
+            {result.employerEmailFailure && (
+              <div className="text-xs mb-2" style={{ color: RED }}>Your own summary email also failed to send: {result.employerEmailFailure}</div>
+            )}
+
+            <div className="text-xs" style={{ color: SLATE }}>Total payroll: {fmtMoney(result.companyTotal, settings.currency)} for {result.employeeCount} employees.</div>
           </div>
+        ) : (
+          <div className="overflow-y-auto px-5 py-4" style={{ flex: 1 }}>
+            <div className="p-4 rounded-lg mb-4 text-center" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <div className="brand text-3xl" style={{ color: ROYAL, fontWeight: 800 }}>{fmtMoney(total, settings.currency)}</div>
+              <div className="mono text-xs mt-1" style={{ color: SLATE }}>TOTAL PAYROLL · {rows.length} EMPLOYEES</div>
+            </div>
 
-          {rows.length === 0 ? (
-            <div className="text-sm text-center py-6" style={{ color: SLATE }}>No hours were logged in this period.</div>
-          ) : (
-            rows.map((r) => (
-              <Row key={r.employee.id}>
-                <div style={{ color: NAVY, fontWeight: 600 }}>{r.employee.name}{!r.employee.email && <span className="mono text-xs ml-1.5" style={{ color: YELLOW }}>· no email</span>}</div>
-                <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{fmtMoney(r.calc.net, settings.currency)}</div>
-              </Row>
-            ))
-          )}
+            {rows.length === 0 ? (
+              <div className="text-sm text-center py-6" style={{ color: SLATE }}>No hours were logged in this period.</div>
+            ) : (
+              rows.map((r) => (
+                <Row key={r.employee.id}>
+                  <div style={{ color: NAVY, fontWeight: 600 }}>{r.employee.name}{!r.employee.email && <span className="mono text-xs ml-1.5" style={{ color: YELLOW }}>· no email</span>}</div>
+                  <div className="mono text-sm" style={{ color: ROYAL, fontWeight: 700 }}>{fmtMoney(r.calc.net, settings.currency)}</div>
+                </Row>
+              ))
+            )}
 
-          {noEmail > 0 && (
-            <div className="text-xs mt-3" style={{ color: SLATE }}>{noEmail} of {employees.length} employees have no email on file and won't receive an automatic summary — they can still be paid as normal, this only affects the automated email.</div>
-          )}
-          {error && <div className="text-xs mt-3" style={{ color: RED }}>{error}</div>}
-        </div>
+            {noEmail > 0 && (
+              <div className="text-xs mt-3" style={{ color: SLATE }}>{noEmail} of {employees.length} employees have no email on file and won't receive an automatic summary — they can still be paid as normal, this only affects the automated email.</div>
+            )}
+            {error && <div className="text-xs mt-3" style={{ color: RED }}>{error}</div>}
+          </div>
+        )}
 
         <div className="px-5 pb-5 pt-2">
-          <button onClick={handleSend} disabled={sending || rows.length === 0} className="w-full text-sm px-4 py-3 rounded-lg text-white" style={{ background: sending || rows.length === 0 ? SLATE : ROYAL, fontWeight: 800 }}>
-            {sending ? "Sending…" : "Send Payroll Summaries"}
-          </button>
+          {result ? (
+            <button onClick={onClose} className="w-full text-sm px-4 py-3 rounded-lg text-white" style={{ background: ROYAL, fontWeight: 800 }}>Done</button>
+          ) : (
+            <button onClick={handleSend} disabled={sending || rows.length === 0} className="w-full text-sm px-4 py-3 rounded-lg text-white" style={{ background: sending || rows.length === 0 ? SLATE : ROYAL, fontWeight: 800 }}>
+              {sending ? "Sending…" : "Send Payroll Summaries"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -3263,6 +3441,11 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
           )}
         </Section>
 
+        <Section title="Time Zone">
+          <div className="text-xs mb-2" style={{ color: SLATE }}>Used to keep pay periods and automated payroll timing accurate.</div>
+          <TimezonePicker value={local.timezone} onChange={(tz) => save({ ...local, timezone: tz })} />
+        </Section>
+
         <Section title="Pay Period">
           <div className="grid grid-cols-2 gap-2 mb-2">
             {[{ id: "weekly", label: "Weekly" }, { id: "biweekly", label: "Bi-Weekly" }, { id: "semimonthly", label: "Semi-Monthly" }, { id: "monthly", label: "Monthly" }].map((p) => (
@@ -3306,7 +3489,41 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
           <input ref={logoRef} type="file" accept="image/png,image/jpeg" capture="environment" onChange={handleLogoFile} className="hidden" />
         </Section>
 
-        <Section title="Tax / Deductions">
+        <Section title="Standard Deductions">
+          <div className="text-xs mb-3" style={{ color: SLATE }}>
+            All optional and blank by default. Fill in only what applies to your province/state — a blank field never appears on the payslip. LabourArc doesn't set these rates for you; check with your accountant for what's correct in your area.
+          </div>
+          {Object.keys(NAMED_DEDUCTION_LABELS).map((key) => {
+            const d = (local.namedDeductions || {})[key] || { type: "percent", value: "" };
+            return (
+              <div key={key} className="flex items-center gap-2 mb-2">
+                <div className="text-sm flex-1" style={{ color: NAVY }}>
+                  {NAMED_DEDUCTION_LABELS[key]}
+                  {key === "ei" && <div className="text-xs mt-0.5" style={{ color: SLATE }}>2026 rate: 1.63% (1.30% in Quebec) — verify with your accountant</div>}
+                </div>
+                <select
+                  value={d.type}
+                  onChange={(e) => save({ ...local, namedDeductions: { ...local.namedDeductions, [key]: { ...d, type: e.target.value } } })}
+                  className="px-2 py-2 rounded-lg border text-xs"
+                  style={{ borderColor: BORDER }}
+                >
+                  <option value="percent">%</option>
+                  <option value="flat">flat</option>
+                </select>
+                <input
+                  value={d.value}
+                  onChange={(e) => save({ ...local, namedDeductions: { ...local.namedDeductions, [key]: { ...d, value: e.target.value } } })}
+                  type="number"
+                  placeholder="—"
+                  className="w-20 px-3 py-2 rounded-lg border text-sm mono"
+                  style={{ borderColor: BORDER }}
+                />
+              </div>
+            );
+          })}
+        </Section>
+
+        <Section title="Other Deductions">
           {(local.deductions || []).map((d) => (
             <div key={d.id} className="flex items-center justify-between text-sm mb-1.5 px-3 py-2 rounded-lg" style={{ background: BG }}>
               <div style={{ color: NAVY }}>{d.label} <span className="mono text-xs" style={{ color: SLATE }}>({d.type === "percent" ? d.value + "%" : fmtMoney(d.value, local.currency)})</span></div>
@@ -3314,7 +3531,7 @@ function SettingsModal({ employerPin, workspace, settings, jobSites, onChangePin
             </div>
           ))}
           <div className="flex gap-2 mt-2 flex-wrap">
-            <input value={newDedLabel} onChange={(e) => setNewDedLabel(e.target.value)} placeholder="Label (e.g. Federal Tax)" className="flex-1 min-w-[120px] px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
+            <input value={newDedLabel} onChange={(e) => setNewDedLabel(e.target.value)} placeholder="Label (e.g. Loan Repayment)" className="flex-1 min-w-[120px] px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }} />
             <select value={newDedType} onChange={(e) => setNewDedType(e.target.value)} className="px-3 py-2 rounded-lg border text-sm" style={{ borderColor: BORDER }}>
               <option value="percent">%</option>
               <option value="flat">flat</option>
